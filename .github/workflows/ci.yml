@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-24.04-arm"]') }}
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # setup-node must precede pnpm on MirrorStack's self-hosted runners,
+      # whose system Node can be too old to run the pnpm installer.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 10.29.3
+          run_install: false
+          standalone: true
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack smoke
+        if: matrix.node == 22
+        shell: bash
+        run: |
+          package_dir="${RUNNER_TEMP}/app-module-client-package"
+          smoke_dir="${RUNNER_TEMP}/app-module-client-smoke"
+          mkdir -p "$package_dir" "$smoke_dir"
+          pnpm pack --pack-destination "$package_dir"
+          cd "$smoke_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts "$package_dir"/mirrorstack-ai-app-module-client-*.tgz
+          node --input-type=module --eval "import { createAppClient, defineModuleClient, ModuleClientError } from '@mirrorstack-ai/app-module-client'; if ([createAppClient, defineModuleClient, ModuleClientError].some((value) => typeof value !== 'function')) throw new Error('required runtime export missing')"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import {
+            createAppClient,
+            defineModuleClient,
+          } from "@mirrorstack-ai/app-module-client";
+
+          const calls = [];
+          const userCore = defineModuleClient({
+            moduleRef: "user-core",
+            create({ public: publicScope }) {
+              return { getMe: () => publicScope.get("/me") };
+            },
+          });
+          const client = createAppClient({
+            baseUrl: "https://api.mirrorstack.ai/v1/dispatch/apps/twkpa-edu",
+            modules: { user: userCore },
+            fetch: async (input, init) => {
+              calls.push([input, init]);
+              return Response.json({ id: "user-1" });
+            },
+          });
+
+          assert.deepEqual(await client.modules.user.getMe(), { id: "user-1" });
+          assert.equal(calls.length, 1);
+          assert.equal(
+            calls[0][0],
+            "https://api.mirrorstack.ai/v1/dispatch/apps/twkpa-edu/user-core/public/me",
+          );
+          assert.equal(calls[0][1].method, "GET");
+          assert.equal(calls[0][1].credentials, "include");
+          const headers = new Headers(calls[0][1].headers);
+          assert.equal(headers.has("authorization"), false);
+          assert.equal([...headers.keys()].some((name) => name.startsWith("x-ms-")), false);
+          NODE
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          writeFileSync(
+            "smoke.mts",
+            `import {
+              createAppClient,
+              defineModuleClient,
+              ModuleClientError,
+              type ModuleScope,
+            } from "@mirrorstack-ai/app-module-client";
+
+            const plugin = defineModuleClient({
+              moduleRef: "user-core",
+              create({ public: publicScope }) {
+                return {
+                  getMe: () => publicScope.get<{ id: string }>("/me"),
+                  logout: () => publicScope.post("/logout", { responseType: "void" }),
+                };
+              },
+            });
+            const client = createAppClient({
+              baseUrl: "/api/mirrorstack/modules",
+              modules: { user: plugin },
+            });
+            const scope: ModuleScope = "public";
+            const me: Promise<{ id: string }> = client.modules.user.getMe();
+            const logout: Promise<void> = client.modules.user.logout();
+            void me;
+            void logout;
+            void ModuleClientError;
+            void scope;
+            `,
+          );
+          NODE
+          "$GITHUB_WORKSPACE/node_modules/.bin/tsc" \
+            --noEmit \
+            --strict \
+            --target ES2022 \
+            --module NodeNext \
+            --moduleResolution NodeNext \
+            --lib ES2022,DOM,DOM.Iterable \
+            smoke.mts

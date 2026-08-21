@@ -1,0 +1,11 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.tsbuildinfo
+*.tgz
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
