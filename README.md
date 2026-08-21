@@ -122,9 +122,12 @@ direct dispatch connection, the current canonical base includes the app
 reference:
 
 ```text
-https://api.mirrorstack.ai/v1/dispatch/apps/<appRef>
-https://api.mirrorstack.ai/v1/dispatch/apps/<appRef>/user-core/public/me
+https://api.<org-domain>/v1/dispatch/apps/<appRef>
+https://api.<org-domain>/v1/dispatch/apps/<appRef>/user-core/public/me
 ```
+
+`<org-domain>` is the organization's configured domain; it is not required to
+be `mirrorstack.ai`.
 
 Keep any deployment prefix in `baseUrl`; endpoint paths are appended rather
 than resolved from the origin root.
