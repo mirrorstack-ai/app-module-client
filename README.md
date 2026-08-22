@@ -12,7 +12,7 @@ endpoint methods, or implicit plugin discovery.
 > validated locally with the first-party User Core plugin; `0.1.0` remains a
 > separate release change.
 
-## Install
+## Install for module development
 
 After the first release, the package will be published to GitHub Packages.
 Configure the scope in the consuming project and provide authentication
@@ -28,16 +28,21 @@ through the environment (do not commit a token):
 pnpm add @mirrorstack-ai/app-module-client
 ```
 
-Node.js 20 or newer is required.
+- Node.js 20 or newer is required.
+- Module authors install this foundation to define a browser client.
+- The planned module-client installer will install or deduplicate the compatible
+  foundation for custom apps.
+- Custom-app developers will not install this foundation separately.
 
 ## Compose an app client
 
-Each module publishes a plugin from its own client package. The host imports
-the plugins it uses and registers them under explicit, typed local names:
+Each module supplies a plugin from its module-local client artifact. The host
+imports the plugins it uses and registers them under explicit, typed local
+names:
 
 ```ts
 import { createAppClient } from "@mirrorstack-ai/app-module-client";
-import { userCore } from "@mirrorstack-ai/user-core-client/plugin";
+import { userCore } from "@mirrorstack-ai/acme/user-core";
 
 const client = createAppClient({
   // A same-origin BFF base is recommended for browser applications.
@@ -55,10 +60,42 @@ The `user` object key is only the host's typed access name. The plugin's
 the package does not scan `node_modules`, load plugins dynamically, or infer
 installed modules.
 
+### Planned install contract
+
+- Install one module client:
+
+```bash
+mirrorstack apps module client install @acme/user-core
+```
+
+- Sync every client-enabled module installed in one app:
+
+```bash
+mirrorstack apps clients install @acme/my-app
+```
+
+- The single-module command resolves one module artifact.
+- The app-wide command resolves the app's installed-module set and reconciles
+  every available client artifact.
+
+- Import: `@mirrorstack-ai/acme/user-core`
+- `@mirrorstack-ai` is the npm scope, not a web-app path alias.
+- npm package: `@mirrorstack-ai/acme`
+- Export subpath: `./user-core`
+- Owner manifest: `node_modules/@mirrorstack-ai/acme/package.json`
+- Module payload: `node_modules/@mirrorstack-ai/acme/user-core/`
+- Export targets: `./user-core/dist/index.js` and
+  `./user-core/dist/index.d.ts`
+- Multiple modules from one owner share one manifest with merged exports.
+- The package manager records the owner package; copying files into
+  `node_modules` alone is insufficient.
+- The artifact root exports the plugin. Modules do not author the installed
+  package name, version, registry, or a separate `/plugin` entry point.
+
 ## Author a module client
 
 Endpoint methods, request/response types, and any framework-specific hooks stay
-in the module's own client package. That package defines its typed surface with
+in the module-local client project. Its artifact defines the typed surface with
 `defineModuleClient`:
 
 ```ts
@@ -92,7 +129,7 @@ export const assetLibrary = ({
 Both scopes expose typed request helpers. For example,
 `.get<T>(path, { query?, responseType? })` performs a GET,
 `.post<T>(path, { json: payload })` sends JSON, and `.url(path, query)` builds a
-navigation URL without making a request. A module package may wrap those
+navigation URL without making a request. A module client may wrap those
 primitives however its own API requires.
 
 JSON is the default response type and requires a JSON body. Endpoints returning
@@ -101,6 +138,44 @@ JSON is the default response type and requires a JSON body. Endpoints returning
 
 Only `public` and `platform` are client scopes. MirrorStack internal routes are
 intentionally not represented.
+
+## Publish a development client through a tunnel
+
+A module declares only where its client source and build output live:
+
+```go
+Client: &system.ClientSpec{
+    Dir:       "client",
+    OutputDir: "dist",
+},
+```
+
+Requirements:
+
+- Declare `ClientSpec` inline.
+- Install dependencies for the runner's Linux architecture and provide a
+  non-empty `package.json#scripts.build` in `client/`.
+- Emit non-empty `dist/index.js` and `dist/index.d.ts` roots.
+- Leave installed package name, version, and registry to the platform.
+- Provide a Linux runner from the matching CLI checkout. In `ms-app-modules`,
+  run `./scripts/build-dev-runner.sh /path/to/mirrorstack-cli` once and after
+  CLI changes; preflight checks executable, CLI version, and runner protocol,
+  but does not fingerprint same-version source changes.
+
+Commands:
+
+```bash
+mirrorstack dev --tunnel
+mirrorstack dev --tunnel --watch
+```
+
+- `--tunnel` builds, uploads, confirms, and binds the artifact to that tunnel
+  session.
+- Watch mode is enabled by default; spelling `--watch` explicitly behaves the
+  same. Use `--watch=false` for a one-shot client build.
+- Each successful watched rebuild replaces that session's confirmed artifact.
+- `--share` is unrelated and is not required.
+- Consumer installation and retrieval are follow-up work.
 
 ## Base URL model
 
@@ -220,14 +295,10 @@ wrapped in `ModuleClientError`.
 | A browser host | Explicit plugin selection, same-origin base URL, browser-safe transport and access-token integration | Delegation credentials, member assertions, signing keys, server secrets, module contracts |
 | A server host or BFF | Upstream app base/reference, cookies or access tokens, trusted assertions, runtime-specific forwarding | Exposing trusted credentials to browser code, re-declaring module contracts |
 
-## Discovery status
+## Delivery status
 
-There is currently no CLI or Module SDK integration that generates or
-auto-discovers client plugins. Installing a module does not add client code to
-an application automatically. Hosts must install each module's client package,
-import its plugin, and register it in the `modules` object themselves.
-
-`@mirrorstack-ai/user-core-client/plugin` is the first hand-authored
-first-party integration. It remains unpublished together with this package;
-the local cross-repository test validates its typed `/public/me` call against
-the canonical DispatchApp URL shape.
+- Delivered in this wave: Module SDK declaration and
+  `mirrorstack dev --tunnel` artifact publishing.
+- Follow-up: consumer installation and artifact retrieval.
+- First integration: User Core exposes `userCore` at its canonical artifact
+  root and validates `/public/me` against the DispatchApp URL shape.
