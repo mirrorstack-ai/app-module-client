@@ -334,9 +334,15 @@ function assertResponseType(responseType: unknown): asserts responseType is Modu
 export function createScopedTransports(
   config: SharedTransportConfig,
   moduleRef: string,
+  moduleBaseUrl?: string,
+  scopePaths: Partial<Record<"public" | "platform", string>> = {},
 ): Readonly<Record<ModuleScope, ScopedTransport>> {
-  const baseUrl = normalizeBaseUrl(config.baseUrl);
-  const moduleBase = `${baseUrl}/${encodeURIComponent(moduleRef)}`;
+  const moduleBase =
+    moduleBaseUrl === undefined
+      ? `${normalizeBaseUrl(config.baseUrl)}/${encodeURIComponent(moduleRef)}`
+      : moduleBaseUrl === ""
+        ? ""
+        : normalizeBaseUrl(moduleBaseUrl);
   const staticHeaders =
     typeof config.headers === "function" || config.headers === undefined
       ? undefined
@@ -344,7 +350,8 @@ export function createScopedTransports(
   const headerProvider = typeof config.headers === "function" ? config.headers : undefined;
 
   function makeScope(scope: ModuleScope): ScopedTransport {
-    const scopeBase = `${moduleBase}/${scope}`;
+    const scopePath = scopePaths[scope] ?? scope;
+    const scopeBase = scopePath ? `${moduleBase}/${scopePath}` : moduleBase;
 
     function url(path: string, query?: QueryParams): string {
       assertSafePath(path);
