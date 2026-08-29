@@ -1,6 +1,6 @@
 {
   "name": "@mirrorstack-ai/app-module-client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Framework-neutral client composition for MirrorStack application modules",
   "type": "module",
   "sideEffects": false,
@@ -24,6 +24,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./dist/web/index.d.ts",
+      "import": "./dist/web/index.js"
     }
   },
   "files": [
@@ -41,7 +45,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pack:check": "pnpm pack --dry-run",
-    "prepack": "pnpm build"
+    "prepare": "pnpm build"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
