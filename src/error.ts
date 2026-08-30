@@ -1,4 +1,8 @@
 import type { ModuleScope } from "./plugin.js";
+import {
+  DEFAULT_MAX_RESPONSE_BYTES,
+  readResponseText,
+} from "./response.js";
 
 /** Construction data retained by {@link ModuleClientError}. */
 export interface ModuleClientErrorOptions {
@@ -77,8 +81,8 @@ function parseEnvelope(body: unknown): ParsedErrorEnvelope {
   return { requestId };
 }
 
-async function readBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+async function readBody(response: Response, maxResponseBytes: number): Promise<unknown> {
+  const text = await readResponseText(response, maxResponseBytes);
   if (text === "") return null;
   try {
     return JSON.parse(text) as unknown;
@@ -88,9 +92,12 @@ async function readBody(response: Response): Promise<unknown> {
 }
 
 /** @internal */
-export async function errorCodeFromResponse(response: Response): Promise<string | undefined> {
+export async function errorCodeFromResponse(
+  response: Response,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+): Promise<string | undefined> {
   try {
-    return parseEnvelope(await readBody(response)).code;
+    return parseEnvelope(await readBody(response, maxResponseBytes)).code;
   } catch {
     return undefined;
   }
@@ -100,10 +107,11 @@ export async function errorCodeFromResponse(response: Response): Promise<string 
 export async function moduleClientErrorFromResponse(
   response: Response,
   context: Pick<ModuleClientErrorOptions, "moduleRef" | "scope" | "path">,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
 ): Promise<ModuleClientError> {
   let body: unknown = null;
   try {
-    body = await readBody(response);
+    body = await readBody(response, maxResponseBytes);
   } catch {
     // A broken error body must not hide the useful HTTP context.
   }

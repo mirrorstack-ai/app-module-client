@@ -5,8 +5,10 @@
 `@mirrorstack-ai/app-module-client` is the framework-neutral, ESM-only client
 composition layer for MirrorStack application modules.
 
-- Keep runtime dependencies at zero. Do not add React, server-framework
-  adapters, query libraries, or module-specific endpoint code.
+- Keep runtime dependencies at zero. The root and `./web` entry points stay
+  framework-neutral; optional framework adapters must use explicit subpaths
+  and optional peer dependencies. Do not add server-framework adapters, query
+  libraries, or module-specific endpoint code.
 - Keep module registration explicit and static. Never scan `node_modules` or
   introduce runtime discovery/dynamic imports.
 - The only module scopes are `public` and `platform`; internal routes are not a

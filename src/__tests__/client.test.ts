@@ -99,9 +99,12 @@ describe("module plugin composition", () => {
 
 describe("module references", () => {
   it.each([
+    "a",
+    "ab",
     "abc",
     "user-core",
-    `a${"b".repeat(39)}`,
+    "user-core-",
+    `a${"b".repeat(15)}`,
     "a722a8a8-d413-435b-b21b-f4cbacb5ef73",
   ])("accepts catalog ref %s", (moduleRef) => {
     expect(() => defineModuleClient({ moduleRef, create: () => ({}) })).not.toThrow();
@@ -109,7 +112,7 @@ describe("module references", () => {
 
   it.each([
     "",
-    "ab",
+    "1user-core",
     "User-core",
     "user_core",
     "module_sdk_id",
@@ -117,8 +120,7 @@ describe("module references", () => {
     "user/core",
     "user\\core",
     "user.core",
-    "user-core-",
-    `a${"b".repeat(40)}`,
+    `a${"b".repeat(16)}`,
     "A722A8A8-D413-435B-B21B-F4CBACB5EF73",
   ])("rejects non-catalog or path-like ref %j", (moduleRef) => {
     expect(() => defineModuleClient({ moduleRef, create: () => ({}) })).toThrow(TypeError);

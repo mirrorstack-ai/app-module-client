@@ -49,15 +49,30 @@ export interface PlatformModuleComponentEvent {
   payload?: unknown;
 }
 
-/** Cross-module component event bridge supplied by the platform. */
+/** Request to mount one component owned by an installed module. */
+export type PlatformModuleMountRequest = {
+  /** Manifest UI component name; the host resolves its declared bundle export. */
+  component: string;
+  target: HTMLElement;
+  props?: Record<string, unknown>;
+  onEvent?: (event: PlatformModuleComponentEvent) => void;
+} & (
+  | {
+      /** Authoritative installed-module identity resolved by the platform. */
+      moduleId: string;
+      /** Optional display/routing hint; never authoritative when moduleId exists. */
+      moduleSlug?: string;
+    }
+  | {
+      moduleId?: undefined;
+      /** @deprecated Supply the platform-resolved moduleId when the host supports it. */
+      moduleSlug: string;
+    }
+);
+
+/** Cross-module component mount bridge supplied by the platform. */
 export interface PlatformModules {
-  mount: (request: {
-    moduleSlug: string;
-    component: string;
-    target: HTMLElement;
-    props?: Record<string, unknown>;
-    onEvent?: (event: PlatformModuleComponentEvent) => void;
-  }) => Promise<() => void>;
+  mount: (request: PlatformModuleMountRequest) => Promise<() => void>;
 }
 
 /** Breadcrumb metadata for a module-owned subpath. */
@@ -84,7 +99,10 @@ export interface ModuleMountContext<TIdentity = unknown> {
   apiBase?: string;
   /** Authenticated host transport, including platform token refresh. */
   fetch?: PlatformFetch;
-  /** Application identifier used to scope platform requests and links. */
+  /**
+   * Host-supplied application identifier for mount-local state and links.
+   * Informational in browser code; never trusted as request identity.
+   */
   appId?: string;
   /** Active BCP-47 locale, such as `en-US` or `zh-TW`. */
   locale?: string;
@@ -102,3 +120,35 @@ export interface ModuleMountContext<TIdentity = unknown> {
 
 /** Backward-compatible concise name for the module mount contract. */
 export type MountContext<TIdentity = unknown> = ModuleMountContext<TIdentity>;
+
+/** Props and lifecycle events supplied to a manifest-declared component. */
+export interface ModuleComponentBridge<
+  TProps extends object = Record<string, unknown>,
+  TEventPayload = unknown,
+> {
+  /** Props validated by the host against the component manifest. */
+  readonly props: TProps;
+  /** Emits a component lifecycle event to the surface that requested it. */
+  emit: (type: string, payload?: TEventPayload) => void;
+}
+
+/**
+ * Host context for one manifest-declared component mount.
+ *
+ * Component mounts always have resolved installation, transport, locale, and
+ * settings navigation context. Optional page bridges remain inherited from
+ * ModuleMountContext so a host can add them without changing this contract.
+ */
+export interface ModuleComponentMountContext<
+  TProps extends object = Record<string, unknown>,
+  TEventPayload = unknown,
+  TIdentity = unknown,
+> extends ModuleMountContext<TIdentity> {
+  apiBase: string;
+  fetch: PlatformFetch;
+  /** Informational host application value; never trusted request identity. */
+  appId: string;
+  locale: string;
+  navigate: Pick<PlatformNavigate, "settings">;
+  component: ModuleComponentBridge<TProps, TEventPayload>;
+}
