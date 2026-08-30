@@ -3,7 +3,9 @@ import { createServer } from "node:http";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
+  DEFAULT_MAX_RESPONSE_BYTES,
   ModuleClientError,
+  ModuleResponseTooLargeError,
   createAppClient,
   defineModuleClient,
   type CreateAppClientOptions,
@@ -86,12 +88,48 @@ describe("request transport", () => {
     expect(init?.body).toBe("raw=payload");
     expect(new Headers(init?.headers).has("content-type")).toBe(false);
 
+    await scopes.public.post("/plain", {
+      body: "plain text",
+      headers: { "content-type": "text/plain" },
+      responseType: "text",
+    });
+    expect(new Headers(mock.mock.calls[1]?.[1]?.headers).get("content-type")).toBe("text/plain");
+
     await expect(
       scopes.public.post("/ambiguous", {
         body: "raw",
         json: { raw: false },
       } as never),
     ).rejects.toThrow(/both json and body/u);
+  });
+
+  it("keeps JSON Content-Type transport-owned after configured and caller headers merge", async () => {
+    const { mock, fetch } = makeFetch(async () => Response.json({ ok: true }));
+    const scopes = makeScopes(fetch, {
+      headers: { "content-type": "text/plain" },
+    });
+
+    await scopes.public.post("/json", {
+      json: { ok: true },
+      headers: { "content-type": "application/xml" },
+    });
+
+    expect(new Headers(mock.mock.calls[0]?.[1]?.headers).get("content-type")).toBe(
+      "application/json",
+    );
+  });
+
+  it("keeps JSON Content-Type transport-owned after an async header provider", async () => {
+    const { mock, fetch } = makeFetch(async () => Response.json({ ok: true }));
+    const scopes = makeScopes(fetch, {
+      headers: async () => ({ "content-type": "application/problem+json" }),
+    });
+
+    await scopes.public.post("/json", { json: { ok: true } });
+
+    expect(new Headers(mock.mock.calls[0]?.[1]?.headers).get("content-type")).toBe(
+      "application/json",
+    );
   });
 
   it("supports every response type and requires void for an empty success", async () => {
@@ -146,6 +184,125 @@ describe("request transport", () => {
 
     await expect(scopes.public.get("/me")).rejects.toBe(networkError);
   });
+});
+
+describe("bounded response bodies", () => {
+  it("accepts the exact byte limit and rejects a larger parsed success", async () => {
+    const responses = [new Response("hello"), new Response("hello!")];
+    const { fetch } = makeFetch(async () => responses.shift()!);
+    const scopes = makeScopes(fetch, { maxResponseBytes: 5 });
+
+    await expect(scopes.public.get("/exact", { responseType: "text" })).resolves.toBe("hello");
+    const error = await scopes.public
+      .get("/large", { responseType: "text" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ModuleResponseTooLargeError);
+    expect(error).toMatchObject({ limitBytes: 5 });
+  });
+
+  it("enforces streaming bytes even when Content-Length understates the body", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("abc"));
+        controller.enqueue(encoder.encode("def"));
+        controller.close();
+      },
+    });
+    const { fetch } = makeFetch(async () => new Response(stream, {
+      headers: { "content-length": "1" },
+    }));
+    const scopes = makeScopes(fetch, { maxResponseBytes: 5 });
+
+    await expect(scopes.public.get("/stream", { responseType: "text" })).rejects.toMatchObject({
+      name: "ModuleResponseTooLargeError",
+      limitBytes: 5,
+    });
+  });
+
+  it("counts encoded bytes rather than JavaScript string characters", async () => {
+    const { fetch } = makeFetch(async () => new Response("éé"));
+    const scopes = makeScopes(fetch, { maxResponseBytes: 3 });
+
+    await expect(scopes.public.get("/utf8", { responseType: "text" })).rejects.toBeInstanceOf(
+      ModuleResponseTooLargeError,
+    );
+  });
+
+  it("rejects an oversized declared body before parsing it", async () => {
+    const { fetch } = makeFetch(async () => new Response("x", {
+      headers: { "content-length": String(DEFAULT_MAX_RESPONSE_BYTES + 1) },
+    }));
+    const scopes = makeScopes(fetch);
+
+    await expect(scopes.public.get("/declared", { responseType: "text" })).rejects.toMatchObject({
+      limitBytes: DEFAULT_MAX_RESPONSE_BYTES,
+    });
+  });
+
+  it("leaves raw response bodies with the caller and does not parse void bodies", async () => {
+    const responses = [new Response("caller-owned"), new Response("ignored")];
+    const { fetch } = makeFetch(async () => responses.shift()!);
+    const scopes = makeScopes(fetch, { maxResponseBytes: 1 });
+
+    const response = await scopes.public.get("/raw", { responseType: "response" });
+    await expect(response.text()).resolves.toBe("caller-owned");
+    await expect(
+      scopes.public.get("/void", { responseType: "void" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("keeps oversized error bodies bounded while preserving HTTP context", async () => {
+    const { fetch } = makeFetch(async () => new Response(
+      JSON.stringify({ error: "invalid_request", message: "too much detail" }),
+      { status: 400, headers: { "x-request-id": "req-large" } },
+    ));
+    const scopes = makeScopes(fetch, { maxResponseBytes: 8 });
+
+    const error = await scopes.public.get("/large-error").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ModuleClientError);
+    expect(error).toMatchObject({
+      status: 400,
+      body: null,
+      code: undefined,
+      requestId: "req-large",
+      message: "Module request failed with status 400",
+    });
+  });
+
+  it("does not refresh from an error code beyond the response limit", async () => {
+    const { mock, fetch } = makeFetch(async () =>
+      Response.json({ error: "token_expired" }, { status: 401 }),
+    );
+    const refreshAccessToken = vi.fn(async () => "access-two");
+    const scopes = makeScopes(fetch, {
+      maxResponseBytes: 8,
+      platformAuth: {
+        getAccessToken: async () => "access-one",
+        refreshAccessToken,
+      },
+    });
+
+    await expect(scopes.platform.get("/me")).rejects.toMatchObject({
+      status: 401,
+      code: undefined,
+      body: null,
+    });
+    expect(mock).toHaveBeenCalledOnce();
+    expect(refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid maxResponseBytes value %s before creating module APIs",
+    (maxResponseBytes) => {
+      const { mock, fetch } = makeFetch(async () => new Response("ok"));
+
+      expect(() => makeScopes(fetch, { maxResponseBytes })).toThrow(
+        /maxResponseBytes must be a positive safe integer/u,
+      );
+      expect(mock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("typed HTTP errors", () => {

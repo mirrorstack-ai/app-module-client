@@ -3,6 +3,7 @@ import {
   moduleClientErrorFromResponse,
 } from "./error.js";
 import type { ModuleScope } from "./plugin.js";
+import { cancelResponseBody, readResponseText } from "./response.js";
 
 /** A value that may be returned synchronously or asynchronously. */
 export type Awaitable<T> = T | PromiseLike<T>;
@@ -43,7 +44,10 @@ export interface PlatformAuth {
   readonly refreshAccessToken?: () => Awaitable<string | null>;
 }
 
-/** Successful response representation requested from the transport. */
+/**
+ * Successful response representation requested from the transport.
+ * A raw `response` transfers body-size enforcement to the caller.
+ */
 export type ModuleResponseType = "json" | "text" | "response" | "void";
 
 /** Maps a response representation to its resolved TypeScript type. */
@@ -132,6 +136,7 @@ export interface SharedTransportConfig {
   readonly fetch: typeof globalThis.fetch;
   readonly headers?: RequestHeaders;
   readonly credentials: RequestCredentials;
+  readonly maxResponseBytes: number;
   readonly metadata?: RequestMetadata;
   readonly platformAuth?: PlatformAuth;
 }
@@ -304,16 +309,18 @@ function requireAccessToken(token: string | null, operation: string): string {
 async function parseSuccess<T, TType extends ModuleResponseType>(
   response: Response,
   responseType: TType,
+  maxResponseBytes: number,
 ): Promise<ModuleResponse<T, TType>> {
   switch (responseType) {
     case "response":
       return response as ModuleResponse<T, TType>;
     case "text":
-      return (await response.text()) as ModuleResponse<T, TType>;
+      return (await readResponseText(response, maxResponseBytes)) as ModuleResponse<T, TType>;
     case "void":
+      cancelResponseBody(response);
       return undefined as ModuleResponse<T, TType>;
     case "json": {
-      const text = await response.text();
+      const text = await readResponseText(response, maxResponseBytes);
       if (text === "") {
         throw new SyntaxError(
           'expected a JSON response body; use responseType: "void" for an empty response',
@@ -377,10 +384,12 @@ export function createScopedTransports(
         options.headers === undefined ? undefined : snapshotHeaders(options.headers, "request headers");
       const headers = new Headers();
       const { body, isJson } = serializeBody(optionRecord);
-      if (isJson) headers.set("content-type", "application/json");
       for (const source of [staticHeaders, providerHeaders, callerHeaders]) {
         source?.forEach((value, name) => headers.set(name, value));
       }
+      // The transport owns JSON serialization, so callers cannot make its
+      // representation disagree with the declared media type.
+      if (isJson) headers.set("content-type", "application/json");
       if (scope === "platform" && headers.has("authorization")) {
         throw new TypeError(
           "platform requests must use platformAuth; configured, provider, and caller Authorization headers are rejected",
@@ -427,7 +436,7 @@ export function createScopedTransports(
       ) {
         return response;
       }
-      const code = await errorCodeFromResponse(response.clone());
+      const code = await errorCodeFromResponse(response.clone(), config.maxResponseBytes);
       if (code === undefined || !REFRESHABLE_CODES.has(code)) return response;
 
       await response.body?.cancel();
@@ -451,9 +460,13 @@ export function createScopedTransports(
       assertResponseType(responseType);
       const response = await rawFetch(path, { ...fetchOptions, method } as ScopedFetchOptions);
       if (!response.ok) {
-        throw await moduleClientErrorFromResponse(response, { moduleRef, scope, path });
+        throw await moduleClientErrorFromResponse(
+          response,
+          { moduleRef, scope, path },
+          config.maxResponseBytes,
+        );
       }
-      return parseSuccess<T, TType>(response, responseType);
+      return parseSuccess<T, TType>(response, responseType, config.maxResponseBytes);
     }
 
     const transport: ScopedTransport = {

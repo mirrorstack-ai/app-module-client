@@ -20,6 +20,11 @@ export {
   type ModuleClientErrorOptions,
 } from "./error.js";
 
+export {
+  DEFAULT_MAX_RESPONSE_BYTES,
+  ModuleResponseTooLargeError,
+} from "./response.js";
+
 export type {
   Awaitable,
   ModuleRequestContext,

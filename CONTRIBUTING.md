@@ -27,7 +27,8 @@ Use conventional commit prefixes such as `feat:`, `fix:`, `docs:`, and
 
 Keep these boundaries intact:
 
-- no runtime dependencies or framework adapters;
+- no runtime dependencies; optional framework adapters must remain isolated
+  behind explicit entry points and optional peer dependencies;
 - no module-specific endpoints, response types, or hooks;
 - no implicit package scanning or dynamic plugin discovery;
 - no internal dispatch routes;

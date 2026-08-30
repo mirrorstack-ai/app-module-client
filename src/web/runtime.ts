@@ -1,7 +1,65 @@
+import { assertModuleRef, type ModuleClientContext } from "../plugin.js";
+import { resolveMaxResponseBytes } from "../response.js";
 import { createScopedTransports } from "../transport.js";
 import type { PlatformFetch } from "./types.js";
 
-/** Options for an API request made by a mounted module web surface. */
+/** Configuration owned by the host at module mount time. */
+export interface CreateModuleWebTransportsOptions {
+  /** Canonical 1-16 character catalog slug or UUID used for routing and diagnostics. */
+  readonly moduleRef: string;
+  /** Dispatch root for this mounted module. Empty means same-origin. */
+  readonly apiBase?: string;
+  /** Authenticated fetch capability supplied by the platform host. */
+  readonly fetch?: PlatformFetch;
+  /** Maximum bytes parsed from response bodies. Defaults to one mebibyte. */
+  readonly maxResponseBytes?: number;
+}
+
+/** Public-root and platform-scoped transports for one mounted module. */
+export type ModuleWebTransports = ModuleClientContext;
+
+/**
+ * Creates full public and platform transports for one mounted module.
+ *
+ * The host-provided fetch owns authentication and application identity.
+ * Browser module code cannot select trusted `X-MS-*` identity headers.
+ */
+export function createModuleWebTransports(
+  options: CreateModuleWebTransportsOptions,
+): ModuleWebTransports {
+  assertModuleRef(options.moduleRef);
+  let apiBase = options.apiBase ?? "";
+  while (apiBase.endsWith("/")) apiBase = apiBase.slice(0, -1);
+  const hostFetch = options.fetch;
+
+  const contextualFetch: typeof globalThis.fetch = async (input, init) => {
+    if (!hostFetch) {
+      throw new Error(
+        "Module " + options.moduleRef + " cannot request data before the host supplies fetch.",
+      );
+    }
+    return hostFetch(input, init);
+  };
+
+  return createScopedTransports(
+    {
+      baseUrl: apiBase,
+      fetch: contextualFetch,
+      credentials: "include",
+      maxResponseBytes: resolveMaxResponseBytes(options.maxResponseBytes),
+    },
+    options.moduleRef,
+    apiBase,
+    { public: "", platform: "platform" },
+  );
+}
+
+/**
+ * Options for an API request made through the v0.1.0 compatibility transport.
+ *
+ * @deprecated Prefer the complete scoped request options exposed by
+ * `createModuleWebTransports()`.
+ */
 export interface ModuleWebRequestOptions {
   body?: unknown;
   headers?: HeadersInit;
@@ -9,7 +67,14 @@ export interface ModuleWebRequestOptions {
   signal?: AbortSignal;
 }
 
-/** Configuration owned by the host at module mount time. */
+/**
+ * Configuration for the v0.1.0 compatibility transport.
+ *
+ * `appId` remains accepted for source compatibility but is informational.
+ * It is never converted into a trusted `X-MS-App-ID` browser header.
+ *
+ * @deprecated Prefer {@link CreateModuleWebTransportsOptions}.
+ */
 export interface CreateModuleWebTransportOptions {
   moduleRef: string;
   apiBase?: string;
@@ -17,7 +82,11 @@ export interface CreateModuleWebTransportOptions {
   fetch?: PlatformFetch;
 }
 
-/** Direct module transport for public-root and platform-scoped routes. */
+/**
+ * Direct v0.1.0 module transport for public-root and platform-scoped routes.
+ *
+ * @deprecated Prefer {@link ModuleWebTransports}.
+ */
 export interface ModuleWebTransport {
   /** Sends a request and parses a successful JSON body. */
   request<T>(method: string, route: string, options?: ModuleWebRequestOptions): Promise<T>;
@@ -34,7 +103,7 @@ type RequestInvoker = (
 
 function routeTarget(
   route: string,
-  transports: ReturnType<typeof createScopedTransports>,
+  transports: ModuleWebTransports,
 ) {
   if (route === "/platform") {
     return { path: "/", transport: transports.platform };
@@ -46,40 +115,19 @@ function routeTarget(
 }
 
 /**
- * Creates a transport for code already mounted inside one module.
+ * Creates the direct route-dispatching transport released in v0.1.0.
  *
- * Unlike createAppClient(), apiBase is the module API root. Public routes are
- * rooted directly there; platform routes use apiBase/platform.
+ * @deprecated Prefer {@link createModuleWebTransports}, which keeps public and
+ * platform routes structurally separate and exposes the full scoped contract.
  */
 export function createModuleWebTransport(
   options: CreateModuleWebTransportOptions,
 ): ModuleWebTransport {
-  let apiBase = options.apiBase ?? "";
-  while (apiBase.endsWith("/")) apiBase = apiBase.slice(0, -1);
-  const hostFetch = options.fetch;
-
-  const contextualFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!hostFetch) {
-      throw new Error(
-        "Module " + options.moduleRef + " cannot request data before the host supplies fetch.",
-      );
-    }
-
-    const headers = new Headers(init?.headers);
-    if (options.appId) headers.set("X-MS-App-ID", options.appId);
-    return hostFetch(input, { ...init, headers });
-  }) as typeof globalThis.fetch;
-
-  const transports = createScopedTransports(
-    {
-      baseUrl: apiBase,
-      fetch: contextualFetch,
-      credentials: "include",
-    },
-    options.moduleRef,
-    apiBase,
-    { public: "", platform: "platform" },
-  );
+  const transports = createModuleWebTransports({
+    moduleRef: options.moduleRef,
+    ...(options.apiBase === undefined ? {} : { apiBase: options.apiBase }),
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+  });
 
   const invoke = async <T>(
     method: string,

@@ -18,7 +18,7 @@ export interface ModuleClientContext {
 export interface ModuleClientPlugin<TApi = unknown> {
   /** Runtime compatibility marker. */
   readonly apiVersion: typeof MODULE_CLIENT_API_VERSION;
-  /** Catalog slug or UUID used as the module's dispatch path segment. */
+  /** Canonical 1-16 character catalog slug or UUID used as the dispatch segment. */
   readonly moduleRef: string;
   /** Creates the module-specific API from its two allowed transports. */
   readonly create: (context: ModuleClientContext) => TApi;
@@ -26,15 +26,15 @@ export interface ModuleClientPlugin<TApi = unknown> {
 
 /** Definition accepted by {@link defineModuleClient}. */
 export interface ModuleClientDefinition<TApi> {
-  /** Catalog slug or UUID; this is deliberately not the Go SDK `Config.ID`. */
+  /** Canonical 1-16 character catalog slug or UUID; never the Go SDK `Config.ID`. */
   readonly moduleRef: string;
   /** Creates the public typed surface exposed at `client.modules.<alias>`. */
   readonly create: (context: ModuleClientContext) => TApi;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Mirrors the catalog's current 3-40 character, no-trailing-hyphen contract.
-const CATALOG_SLUG_PATTERN = /^[a-z][a-z0-9-]{1,38}[a-z0-9]$/;
+// Mirrors the Go module SDK's canonical 1-16 byte catalog slug contract.
+const CATALOG_SLUG_PATTERN = /^[a-z][a-z0-9-]{0,15}$/;
 
 /** @internal */
 export function assertModuleRef(moduleRef: string): void {

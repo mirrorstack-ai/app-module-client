@@ -3,6 +3,7 @@ import {
   assertModuleRef,
   type ModuleClientPlugin,
 } from "./plugin.js";
+import { resolveMaxResponseBytes } from "./response.js";
 import {
   createScopedTransports,
   type PlatformAuth,
@@ -42,6 +43,8 @@ export interface CreateAppClientOptions<TModules extends ModulePluginMap> {
   readonly metadata?: RequestMetadata;
   /** Optional access-token lifecycle used only by platform-scope requests. */
   readonly platformAuth?: PlatformAuth;
+  /** Maximum bytes parsed from response bodies. Defaults to one mebibyte. */
+  readonly maxResponseBytes?: number;
 }
 
 function resolveFetch(fetchImplementation: typeof globalThis.fetch | undefined): typeof globalThis.fetch {
@@ -116,6 +119,7 @@ export function createAppClient<const TModules extends ModulePluginMap>(
     baseUrl: options.baseUrl,
     fetch: resolveFetch(options.fetch),
     credentials: options.credentials ?? "include",
+    maxResponseBytes: resolveMaxResponseBytes(options.maxResponseBytes),
     ...(options.headers === undefined ? {} : { headers: options.headers }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
     ...(options.platformAuth === undefined ? {} : { platformAuth: options.platformAuth }),
