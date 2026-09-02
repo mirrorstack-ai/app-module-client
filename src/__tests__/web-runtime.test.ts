@@ -51,7 +51,9 @@ test("web transports keep public and platform routes structurally separate", asy
 
   assert.deepEqual(calls, [
     { input: "/modules/user-core/platform/users", appId: null },
-    { input: "/modules/user-core/me", appId: null },
+    // The public scope owns its segment, exactly as platform owns /platform.
+    // The Go SDK mounts ms.Public routes under /public/.
+    { input: "/modules/user-core/public/me", appId: null },
   ]);
 });
 
@@ -163,4 +165,49 @@ test("the singular compatibility transport requires host fetch before requesting
     transport.request("GET", "/me"),
     /Module user-core cannot request data before the host supplies fetch/u,
   );
+});
+
+test("the public scope owns its segment so modules never spell it", async () => {
+  const calls: string[] = [];
+  const transports = createModuleWebTransports({
+    moduleRef: "users-profile",
+    apiBase: "https://dispatch.example/module/users-profile",
+    fetch: async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return Response.json({ ok: true });
+    },
+  });
+
+  await transports.public.get("/profile-fields");
+
+  assert.deepEqual(calls, [
+    "https://dispatch.example/module/users-profile/public/profile-fields",
+  ]);
+});
+
+test("the deprecated singular transport still addresses the module root", async () => {
+  // Regression guard for the fix to #10. This transport is documented as
+  // serving "public-root and platform-scoped routes", so its callers pass whole
+  // paths — the /public segment and root-level routes alike. It must NOT
+  // inherit the segment createModuleWebTransports now owns, or /public/x would
+  // become /public/public/x and /healthz would become /public/healthz.
+  const calls: string[] = [];
+  const transport = createModuleWebTransport({
+    moduleRef: "users-profile",
+    apiBase: "https://dispatch.example/module/users-profile",
+    fetch: async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return Response.json({ ok: true });
+    },
+  });
+
+  await transport.request("GET", "/public/profile-fields");
+  await transport.request("GET", "/platform/settings");
+  await transport.request("GET", "/healthz");
+
+  assert.deepEqual(calls, [
+    "https://dispatch.example/module/users-profile/public/profile-fields",
+    "https://dispatch.example/module/users-profile/platform/settings",
+    "https://dispatch.example/module/users-profile/healthz",
+  ]);
 });

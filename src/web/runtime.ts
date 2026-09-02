@@ -24,8 +24,9 @@ export type ModuleWebTransports = ModuleClientContext;
  * The host-provided fetch owns authentication and application identity.
  * Browser module code cannot select trusted `X-MS-*` identity headers.
  */
-export function createModuleWebTransports(
+function composeWebTransports(
   options: CreateModuleWebTransportsOptions,
+  scopePaths: Partial<Record<"public" | "platform", string>>,
 ): ModuleWebTransports {
   assertModuleRef(options.moduleRef);
   let apiBase = options.apiBase ?? "";
@@ -50,8 +51,17 @@ export function createModuleWebTransports(
     },
     options.moduleRef,
     apiBase,
-    { public: "", platform: "platform" },
+    scopePaths,
   );
+}
+
+export function createModuleWebTransports(
+  options: CreateModuleWebTransportsOptions,
+): ModuleWebTransports {
+  // The Go SDK mounts each scope under its own name — ms.Public routes live at
+  // /public/ — so the public scope owns that segment exactly as platform owns
+  // /platform/. A module must never have to spell it in the path it requests.
+  return composeWebTransports(options, { public: "public", platform: "platform" });
 }
 
 /**
@@ -123,11 +133,18 @@ function routeTarget(
 export function createModuleWebTransport(
   options: CreateModuleWebTransportOptions,
 ): ModuleWebTransport {
-  const transports = createModuleWebTransports({
-    moduleRef: options.moduleRef,
-    ...(options.apiBase === undefined ? {} : { apiBase: options.apiBase }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-  });
+  // This transport is documented as serving "public-root and platform-scoped
+  // routes": its callers pass whole paths, including the /public segment and
+  // root-level routes. It therefore keeps addressing the module ROOT, and does
+  // not inherit the /public segment createModuleWebTransports now owns.
+  const transports = composeWebTransports(
+    {
+      moduleRef: options.moduleRef,
+      ...(options.apiBase === undefined ? {} : { apiBase: options.apiBase }),
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    },
+    { public: "", platform: "platform" },
+  );
 
   const invoke = async <T>(
     method: string,
