@@ -10,8 +10,11 @@ V1 deliberately has no server-framework adapter, module-specific endpoint or
 domain/query hooks, or implicit plugin discovery. Optional generic React
 lifecycle helpers remain isolated behind the `./web/react` entry point.
 
-> Version `0.1.1` adds the reviewed shared module-web runtime while retaining
-> the `0.1.0` web cache and compatibility transport exports.
+> Version `0.2.0` composes the web **public** scope under `/public/`, matching
+> where the Go Module SDK mounts `ms.Public` routes. Callers that worked around
+> the previous module-root behaviour by spelling the segment must drop it. The
+> deprecated `createModuleWebTransport()` still addresses the module root, and
+> the `0.1.0` web cache and compatibility transport exports remain.
 
 ## Install
 
