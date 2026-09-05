@@ -18,7 +18,10 @@ composition layer for MirrorStack application modules.
   member assertions, or server secrets. Reject caller-controlled `X-MS-*`
   headers.
 - A dispatch base already identifies the app. Requests append
-  `/<moduleRef>/<scope>/<path>`; preserve base-path prefixes.
+  `/<scope>/<moduleRef>/<path>` — scope BEFORE module, the platform contract
+  `https://api.<org-domain>/v1/apps/app/<appSlug>/<scope>/<moduleSlug>/<path>`;
+  preserve base-path prefixes. The `./web` runtime receives a module root from
+  its host and appends only `/<scope>/<path>`.
 - Module endpoint methods, wire types, and framework hooks belong in each
   module's own client package.
 
@@ -28,7 +31,8 @@ composition layer for MirrorStack application modules.
 - `src/plugin.ts` defines the plugin contract and its two allowed scopes;
   `src/client.ts` validates and composes the explicit module map.
 - `src/transport.ts` owns confined URL/request behavior and transport/auth
-  injection; `src/error.ts` owns the public HTTP error.
+  injection; `src/base-url.ts` builds the platform `baseUrl` from an app's
+  environment; `src/error.ts` owns the public HTTP error.
 - `src/**/*.{test,spec}.ts` and `tests/**/*.{test,spec}.ts` cover behavior and
   contract boundaries; neither is emitted.
 - `README.md` is the canonical package documentation. Keep design guidance

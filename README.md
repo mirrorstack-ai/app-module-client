@@ -10,11 +10,13 @@ V1 deliberately has no server-framework adapter, module-specific endpoint or
 domain/query hooks, or implicit plugin discovery. Optional generic React
 lifecycle helpers remain isolated behind the `./web/react` entry point.
 
-> Version `0.2.0` composes the web **public** scope under `/public/`, matching
-> where the Go Module SDK mounts `ms.Public` routes. Callers that worked around
-> the previous module-root behaviour by spelling the segment must drop it. The
-> deprecated `createModuleWebTransport()` still addresses the module root, and
-> the `0.1.0` web cache and compatibility transport exports remain.
+> Version `0.3.0` composes an app dispatch root as
+> `<baseUrl>/<scope>/<moduleRef>/<path>` — scope **before** module — matching
+> the platform contract for custom web apps, and adds `platformBaseUrl()` to
+> build that base from `MIRRORSTACK_API_URL` and `MIRRORSTACK_APP_SLUG`. A host
+> that pinned the previous `<baseUrl>/<moduleRef>/<scope>/<path>` shape in a
+> test or a BFF route table must update it. The `./web` runtime receives a
+> module root from its host and is unchanged.
 
 ## Install
 
@@ -115,30 +117,53 @@ intentionally not represented.
 
 ## Base URL model
 
-`baseUrl` identifies the app dispatch root. The core appends the plugin's
-module reference, scope, and endpoint path:
+`baseUrl` identifies the app dispatch root. The core appends the scope, the
+plugin's module reference, and the endpoint path — scope first:
 
 ```text
-<baseUrl>/<moduleRef>/<scope>/<path>
+<baseUrl>/<scope>/<moduleRef>/<path>
 ```
 
-For a browser, prefer a same-origin BFF such as:
+For a direct platform connection, the canonical base carries the app
+reference, and the platform serves every installed module beneath it:
 
 ```text
-/api/mirrorstack/modules/user-core/public/me
+https://api.<org-domain>/v1/apps/app/<appRef>
+https://api.<org-domain>/v1/apps/app/<appRef>/public/user-core/me
 ```
 
-The BFF owns the upstream app reference and any server-side credentials. For a
-direct dispatch connection, the current canonical base includes the app
-reference:
+Build that base with `platformBaseUrl`. A custom web app reads
+`MIRRORSTACK_API_URL` and `MIRRORSTACK_APP_SLUG` from its environment. The
+slug is the **app** slug as shown in the console URL
+(`apps.mirrorstack.ai/apps/<slug>`) — lowercase letters, digits, and hyphens,
+1–39 characters, may start with a digit — not a module's catalog slug. The
+helper validates both inputs (absolute HTTP(S) URL without credentials, query,
+or fragment; app slug), strips trailing slashes, and fails at startup instead
+of as a 404 on the first request:
 
-```text
-https://api.<org-domain>/v1/dispatch/apps/<appRef>
-https://api.<org-domain>/v1/dispatch/apps/<appRef>/user-core/public/me
+```ts
+import { createAppClient, platformBaseUrl } from "@mirrorstack-ai/app-module-client";
+import { userCore } from "@mirrorstack-ai/user-core-client/plugin";
+
+const client = createAppClient({
+  baseUrl: platformBaseUrl({
+    apiUrl: process.env.MIRRORSTACK_API_URL!, // https://api.<org-domain>
+    appSlug: process.env.MIRRORSTACK_APP_SLUG!, // <appRef>
+  }),
+  modules: { user: userCore() },
+});
+// client.modules.user.getMe() → GET https://api.<org-domain>/v1/apps/app/<appRef>/public/user-core/me
 ```
 
 `<org-domain>` is the organization's configured domain; it is not required to
 be `mirrorstack.ai`.
+
+For a browser, a same-origin BFF that forwards to that base keeps the upstream
+app reference and any server-side credentials out of client code:
+
+```text
+/api/mirrorstack/modules/public/user-core/me
+```
 
 Keep any deployment prefix in `baseUrl`; endpoint paths are appended rather
 than resolved from the origin root.
@@ -247,7 +272,8 @@ import its plugin, and register it in the `modules` object themselves.
 
 `@mirrorstack-ai/user-core-client/plugin` is the first hand-authored
 first-party integration. Cross-repository canaries validate its typed
-`/public/me` call against the canonical DispatchApp URL shape.
+`/public/me` call against the canonical platform URL shape,
+`https://api.<org-domain>/v1/apps/app/<appRef>/public/user-core/me`.
 
 ## Mounted module web surfaces
 

@@ -187,9 +187,10 @@ function assertSafePath(path: string): void {
   throw new TypeError("module request path is excessively percent encoded");
 }
 
-function normalizeBaseUrl(baseUrl: string): string {
+/** @internal */
+export function normalizeBaseUrl(baseUrl: string, label = "baseUrl"): string {
   if (typeof baseUrl !== "string" || baseUrl === "" || baseUrl.includes("\\")) {
-    throw new TypeError("baseUrl must be a non-empty HTTP(S) URL or root-relative path");
+    throw new TypeError(`${label} must be a non-empty HTTP(S) URL or root-relative path`);
   }
   if (/^https?:\/\//u.test(baseUrl)) {
     const parsed = new URL(baseUrl);
@@ -200,7 +201,7 @@ function normalizeBaseUrl(baseUrl: string): string {
       parsed.search !== "" ||
       parsed.hash !== ""
     ) {
-      throw new TypeError("baseUrl must not contain credentials, a query, or a fragment");
+      throw new TypeError(`${label} must not contain credentials, a query, or a fragment`);
     }
     const authority = `${parsed.protocol}//${parsed.host}`;
     const rawPath = baseUrl.slice(authority.length) || "/";
@@ -208,7 +209,7 @@ function normalizeBaseUrl(baseUrl: string): string {
     return baseUrl.replace(/\/+$/u, "");
   }
   if (!baseUrl.startsWith("/") || baseUrl.startsWith("//")) {
-    throw new TypeError("relative baseUrl must be root-relative");
+    throw new TypeError(`relative ${label} must be root-relative`);
   }
   assertSafePath(baseUrl);
   return baseUrl.replace(/\/+$/u, "");
@@ -344,12 +345,13 @@ export function createScopedTransports(
   moduleBaseUrl?: string,
   scopePaths: Partial<Record<"public" | "platform", string>> = {},
 ): Readonly<Record<ModuleScope, ScopedTransport>> {
-  const moduleBase =
+  const base =
     moduleBaseUrl === undefined
-      ? `${normalizeBaseUrl(config.baseUrl)}/${encodeURIComponent(moduleRef)}`
+      ? normalizeBaseUrl(config.baseUrl)
       : moduleBaseUrl === ""
         ? ""
         : normalizeBaseUrl(moduleBaseUrl);
+  const encodedModuleRef = encodeURIComponent(moduleRef);
   const staticHeaders =
     typeof config.headers === "function" || config.headers === undefined
       ? undefined
@@ -358,7 +360,14 @@ export function createScopedTransports(
 
   function makeScope(scope: ModuleScope): ScopedTransport {
     const scopePath = scopePaths[scope] ?? scope;
-    const scopeBase = scopePath ? `${moduleBase}/${scopePath}` : moduleBase;
+    const scopeSegment = scopePath === "" ? "" : `/${scopePath}`;
+    // An app dispatch root composes <baseUrl>/<scope>/<moduleRef>/<path>: the
+    // platform routes by scope BEFORE module. A host-supplied module root (the
+    // /web runtime) already names the module, so only the scope follows it.
+    const scopeBase =
+      moduleBaseUrl === undefined
+        ? `${base}${scopeSegment}/${encodedModuleRef}`
+        : `${base}${scopeSegment}`;
 
     function url(path: string, query?: QueryParams): string {
       assertSafePath(path);

@@ -15,6 +15,8 @@ export {
   type ModulePluginMap,
 } from "./client.js";
 
+export { platformBaseUrl, type PlatformBaseUrlOptions } from "./base-url.js";
+
 export {
   ModuleClientError,
   type ModuleClientErrorOptions,

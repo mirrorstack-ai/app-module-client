@@ -12,6 +12,7 @@ import {
   type ModuleClientContext,
   type ModulePluginMap,
 } from "../index.js";
+import { createScopedTransports } from "../transport.js";
 
 function makeFetch(
   implementation: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -29,12 +30,37 @@ function makeScopes(
     create: (context) => context,
   });
   return createAppClient({
-    baseUrl: "/v1/dispatch/apps/demo",
+    baseUrl: "/v1/apps/app/demo",
     modules: { user: plugin },
     fetch: fetchImplementation,
     ...options,
   }).modules.user;
 }
+
+describe("scope composition", () => {
+  it("places the scope before the module under an app dispatch root", () => {
+    const { fetch } = makeFetch(async () => Response.json({}));
+    const scopes = makeScopes(fetch);
+
+    // The platform contract for custom web apps:
+    // https://api.<org-domain>/v1/apps/app/<app-slug>/<scope>/<module-slug>/<path>
+    expect(scopes.public.url("/me")).toBe("/v1/apps/app/demo/public/user-core/me");
+    expect(scopes.platform.url("/me")).toBe("/v1/apps/app/demo/platform/user-core/me");
+  });
+
+  it("omits an empty scope segment but always keeps the module segment", () => {
+    const { fetch } = makeFetch(async () => Response.json({}));
+    const scopes = createScopedTransports(
+      { baseUrl: "/v1/apps/app/demo", fetch, credentials: "include", maxResponseBytes: 1024 },
+      "user-core",
+      undefined,
+      { public: "" },
+    );
+
+    expect(scopes.public.url("/me")).toBe("/v1/apps/app/demo/user-core/me");
+    expect(scopes.platform.url("/me")).toBe("/v1/apps/app/demo/platform/user-core/me");
+  });
+});
 
 describe("request transport", () => {
   it("uses one injected fetch with include credentials and merged request context", async () => {
@@ -47,7 +73,7 @@ describe("request transport", () => {
         scope: "public",
         method: "POST",
         path: "/users",
-        url: "/v1/dispatch/apps/demo/user-core/public/users?notify=true",
+        url: "/v1/apps/app/demo/public/user-core/users?notify=true",
         metadata: { app: "demo", operation: "create-user" },
       });
       return { "x-provider": "yes", "x-order": "provider" };
@@ -69,7 +95,7 @@ describe("request transport", () => {
     expect(headerProvider).toHaveBeenCalledOnce();
     expect(mock).toHaveBeenCalledOnce();
     const [url, init] = mock.mock.calls[0]!;
-    expect(url).toBe("/v1/dispatch/apps/demo/user-core/public/users?notify=true");
+    expect(url).toBe("/v1/apps/app/demo/public/user-core/users?notify=true");
     expect(init?.credentials).toBe("include");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe('{"name":"Ada"}');
@@ -535,7 +561,7 @@ describe("platform authentication", () => {
         create: (context) => context,
       });
       const scopes = createAppClient({
-        baseUrl: `http://127.0.0.1:${address.port}/v1/dispatch/apps/demo`,
+        baseUrl: `http://127.0.0.1:${address.port}/v1/apps/app/demo`,
         modules: { user: plugin },
         platformAuth: { getAccessToken: async () => "access-one" },
       }).modules.user;

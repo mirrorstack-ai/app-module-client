@@ -29,7 +29,11 @@ export interface AppClient<TModules extends ModulePluginMap> {
 
 /** Configuration for {@link createAppClient}. */
 export interface CreateAppClientOptions<TModules extends ModulePluginMap> {
-  /** Dispatch prefix, for example `/v1/dispatch/apps/my-app` or a same-origin BFF path. */
+  /**
+   * App dispatch root; the client appends `/<scope>/<moduleRef>/<path>`.
+   * Use `platformBaseUrl(...)` (`https://api.<org-domain>/v1/apps/app/<appSlug>`)
+   * for a direct platform connection, or a same-origin BFF path.
+   */
   readonly baseUrl: string;
   /** Explicit plugin composition; no package is discovered dynamically. */
   readonly modules: TModules;

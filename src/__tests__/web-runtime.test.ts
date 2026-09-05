@@ -211,3 +211,38 @@ test("the deprecated singular transport still addresses the module root", async 
     "https://dispatch.example/module/users-profile/healthz",
   ]);
 });
+
+test("a host-supplied module root is unchanged by the scope-before-module app composition", async () => {
+  // 0.3.0 made createAppClient compose <baseUrl>/<scope>/<moduleRef>/<path>.
+  // The /web runtime receives the MODULE root from its host, which already
+  // names the module, so its URLs stay <root>/<scope>/<path> byte for byte:
+  // the module reference appears once, in the root, never again after the
+  // scope. Same-origin (empty root) composes /<scope>/<path>.
+  const calls: string[] = [];
+  const fetch = async (input: RequestInfo | URL) => {
+    calls.push(String(input));
+    return Response.json({ ok: true });
+  };
+
+  const rooted = createModuleWebTransports({
+    moduleRef: "user-core",
+    apiBase: "https://dispatch.example/module/user-core/",
+    fetch,
+  });
+  await rooted.public.get("/me");
+  await rooted.platform.get("/users");
+
+  const sameOrigin = createModuleWebTransports({ moduleRef: "user-core", fetch });
+  await sameOrigin.public.get("/me");
+  await sameOrigin.platform.get("/users");
+
+  assert.deepEqual(calls, [
+    "https://dispatch.example/module/user-core/public/me",
+    "https://dispatch.example/module/user-core/platform/users",
+    "/public/me",
+    "/platform/users",
+  ]);
+  for (const url of calls) {
+    assert.doesNotMatch(url, /\/(?:public|platform)\/user-core\//u);
+  }
+});

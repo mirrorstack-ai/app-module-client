@@ -48,6 +48,13 @@ export function assertModuleRef(moduleRef: string): void {
   }
 }
 
+/** @internal */
+export function assertCatalogSlug(value: string, label: string): void {
+  if (typeof value !== "string" || !CATALOG_SLUG_PATTERN.test(value)) {
+    throw new TypeError(`${label} must be a lowercase catalog slug matching [a-z][a-z0-9-]{0,15}`);
+  }
+}
+
 /**
  * Defines a module plugin while preserving the return type of `create`.
  *
