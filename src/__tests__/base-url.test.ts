@@ -39,18 +39,44 @@ describe("platformBaseUrl", () => {
 
   it("rejects an invalid app slug", () => {
     expect(() => platformBaseUrl({ apiUrl: "https://api.example.org", appSlug: "Twkpa_Edu" })).toThrow(
-      /appSlug must be a lowercase catalog slug/u,
+      /appSlug must be a lowercase app slug/u,
     );
+  });
+
+  // The APP slug rule (api-platform internal/shared/slugs/slugs.go) is wider
+  // than the module catalog slug rule: 1-39 chars, may start with a digit.
+  it.each([
+    "1abc",
+    "1edu",
+    "a",
+    "7",
+    "twkpa-edu-test",
+    `a${"b".repeat(16)}`,
+    `a${"b".repeat(38)}`,
+    "a722a8a8-d413-435b-b21b-f4cbacb5ef73",
+  ])("accepts app slug %j", (appSlug) => {
+    expect(appSlug.length).toBeLessThanOrEqual(39);
+    expect(platformBaseUrl({ apiUrl: "https://api.example.org", appSlug })).toBe(
+      `https://api.example.org/v1/apps/app/${appSlug}`,
+    );
+  });
+
+  it("rejects a 40-character app slug", () => {
+    const appSlug = `a${"b".repeat(39)}`;
+    expect(appSlug).toHaveLength(40);
+    expect(() => platformBaseUrl({ apiUrl: "https://api.example.org", appSlug })).toThrow(TypeError);
   });
 
   it.each([
     "",
-    "1edu",
+    "TWKPA-EDU",
+    "Twkpa",
+    "twkpa_edu",
+    "-twkpa",
     "twkpa/edu",
     "../edu",
     "twkpa edu",
-    `a${"b".repeat(16)}`,
-    "a722a8a8-d413-435b-b21b-f4cbacb5ef73",
+    "twkpa.edu",
   ])("rejects app slug %j", (appSlug) => {
     expect(() => platformBaseUrl({ apiUrl: "https://api.example.org", appSlug })).toThrow(TypeError);
   });

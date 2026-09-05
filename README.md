@@ -133,10 +133,13 @@ https://api.<org-domain>/v1/apps/app/<appRef>/public/user-core/me
 ```
 
 Build that base with `platformBaseUrl`. A custom web app reads
-`MIRRORSTACK_API_URL` and `MIRRORSTACK_APP_SLUG` from its environment; the
-helper validates both (absolute HTTP(S) URL without credentials, query, or
-fragment; lowercase catalog slug), strips trailing slashes, and fails at
-startup instead of as a 404 on the first request:
+`MIRRORSTACK_API_URL` and `MIRRORSTACK_APP_SLUG` from its environment. The
+slug is the **app** slug as shown in the console URL
+(`apps.mirrorstack.ai/apps/<slug>`) — lowercase letters, digits, and hyphens,
+1–39 characters, may start with a digit — not a module's catalog slug. The
+helper validates both inputs (absolute HTTP(S) URL without credentials, query,
+or fragment; app slug), strips trailing slashes, and fails at startup instead
+of as a 404 on the first request:
 
 ```ts
 import { createAppClient, platformBaseUrl } from "@mirrorstack-ai/app-module-client";
