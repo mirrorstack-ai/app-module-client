@@ -37,7 +37,7 @@ describe("module plugin composition", () => {
     });
 
     const client = createAppClient({
-      baseUrl: "/v1/dispatch/apps/demo",
+      baseUrl: "/v1/apps/app/demo",
       modules: { assets, audit },
       fetch: noopFetch,
     });
@@ -48,7 +48,7 @@ describe("module plugin composition", () => {
     }>();
     expectTypeOf(client.modules.audit.exportUrl).returns.toEqualTypeOf<string>();
     expect(client.modules.audit.exportUrl()).toBe(
-      "/v1/dispatch/apps/demo/audit-log/platform/export?format=csv",
+      "/v1/apps/app/demo/platform/audit-log/export?format=csv",
     );
     expect(Object.isFrozen(client)).toBe(true);
     expect(Object.isFrozen(client.modules)).toBe(true);
@@ -128,7 +128,7 @@ describe("module references", () => {
 });
 
 describe("safe URL construction", () => {
-  function publicTransport(baseUrl = "/v1/dispatch/apps/demo") {
+  function publicTransport(baseUrl = "/v1/apps/app/demo") {
     return createAppClient({
       baseUrl,
       modules: {
@@ -143,7 +143,7 @@ describe("safe URL construction", () => {
 
   it("preserves relative and absolute base prefixes and encodes query values", () => {
     expect(
-      publicTransport("/edge/v1/dispatch/apps/demo/").url("/directory", {
+      publicTransport("/edge/v1/apps/app/demo/").url("/directory", {
         q: "Ada Lovelace",
         tag: ["admin", "a/b"],
         page: 2,
@@ -151,11 +151,11 @@ describe("safe URL construction", () => {
         omitted: undefined,
       }),
     ).toBe(
-      "/edge/v1/dispatch/apps/demo/sample-module/public/directory?q=Ada+Lovelace&tag=admin&tag=a%2Fb&page=2&archived=false",
+      "/edge/v1/apps/app/demo/public/sample-module/directory?q=Ada+Lovelace&tag=admin&tag=a%2Fb&page=2&archived=false",
     );
     expect(
       publicTransport("https://api.example.test/prefix/").url("/me", new URLSearchParams("x=1")),
-    ).toBe("https://api.example.test/prefix/sample-module/public/me?x=1");
+    ).toBe("https://api.example.test/prefix/public/sample-module/me?x=1");
   });
 
   it.each([

@@ -53,7 +53,7 @@ jobs:
           cd "$smoke_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts "$package_dir"/mirrorstack-ai-app-module-client-*.tgz
-          node --input-type=module --eval "import { createAppClient, defineModuleClient, ModuleClientError } from '@mirrorstack-ai/app-module-client'; if ([createAppClient, defineModuleClient, ModuleClientError].some((value) => typeof value !== 'function')) throw new Error('required runtime export missing')"
+          node --input-type=module --eval "import { createAppClient, defineModuleClient, ModuleClientError, platformBaseUrl } from '@mirrorstack-ai/app-module-client'; if ([createAppClient, defineModuleClient, ModuleClientError, platformBaseUrl].some((value) => typeof value !== 'function')) throw new Error('required runtime export missing')"
           node --input-type=module --eval "import { createModuleSubpathStore, createModuleTextCache, createModuleWebTransport, createModuleWebTransports, mountModuleComponent, resolveLocalizedText } from '@mirrorstack-ai/app-module-client/web'; if ([createModuleSubpathStore, createModuleTextCache, createModuleWebTransport, createModuleWebTransports, mountModuleComponent, resolveLocalizedText].some((value) => typeof value !== 'function')) throw new Error('required web runtime export missing')"
           test -f node_modules/@mirrorstack-ai/app-module-client/dist/web/index.d.ts
           test -f node_modules/@mirrorstack-ai/app-module-client/dist/web/react.d.ts
@@ -62,7 +62,15 @@ jobs:
           import {
             createAppClient,
             defineModuleClient,
+            platformBaseUrl,
           } from "@mirrorstack-ai/app-module-client";
+
+          // Cross-repo contract: the platform serves a custom app's modules at
+          // https://api.<org-domain>/v1/apps/app/<app-slug>/<scope>/<module-slug>/<path>
+          assert.equal(
+            platformBaseUrl({ apiUrl: "https://api.example.org/", appSlug: "twkpa-edu" }),
+            "https://api.example.org/v1/apps/app/twkpa-edu",
+          );
 
           const calls = [];
           const userCore = defineModuleClient({
@@ -72,7 +80,7 @@ jobs:
             },
           });
           const client = createAppClient({
-            baseUrl: "https://api.example.org/v1/dispatch/apps/twkpa-edu",
+            baseUrl: "https://api.example.org/v1/apps/app/twkpa-edu",
             modules: { user: userCore },
             fetch: async (input, init) => {
               calls.push([input, init]);
@@ -84,7 +92,7 @@ jobs:
           assert.equal(calls.length, 1);
           assert.equal(
             calls[0][0],
-            "https://api.example.org/v1/dispatch/apps/twkpa-edu/user-core/public/me",
+            "https://api.example.org/v1/apps/app/twkpa-edu/public/user-core/me",
           );
           assert.equal(calls[0][1].method, "GET");
           assert.equal(calls[0][1].credentials, "include");

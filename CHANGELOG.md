@@ -7,6 +7,35 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-05
+
+### Changed
+
+- **Breaking.** `createAppClient` now composes an app dispatch root as
+  `<baseUrl>/<scope>/<moduleRef>/<path>` — scope **before** module — matching
+  the platform contract for custom web apps,
+  `https://api.<org-domain>/v1/apps/app/<app-slug>/<scope>/<module-slug>/<path>`.
+  It previously produced `<baseUrl>/<moduleRef>/<scope>/<path>`. A host that
+  pinned the old shape (a test, a BFF route table) must update it. Module client
+  packages that compose through `defineModuleClient({ moduleRef })` and
+  scope-relative paths need no change.
+- The `./web` runtime (`createModuleWebTransports` and the deprecated singular
+  `createModuleWebTransport`) is **unchanged**: it receives a module root from
+  its host and still appends `/<scope>/<path>`. A regression test pins that its
+  output is byte-identical.
+
+### Added
+
+- `platformBaseUrl({ apiUrl, appSlug })` builds the base a custom web app passes
+  to `createAppClient` from `MIRRORSTACK_API_URL` and `MIRRORSTACK_APP_SLUG`:
+  `${apiUrl}/v1/apps/app/${appSlug}`. It requires an absolute HTTP(S) `apiUrl`
+  without credentials, a query, or a fragment (trailing slashes are stripped, a
+  path prefix is preserved) and a lowercase catalog-slug `appSlug`.
+
+`MODULE_CLIENT_API_VERSION` is deliberately **not** bumped: the plugin contract
+(`moduleRef` plus scope-relative paths) is unchanged, and raising it would reject
+every existing plugin.
+
 ## [0.2.0] - 2026-09-02
 
 ### Fixed
