@@ -168,6 +168,48 @@ app reference and any server-side credentials out of client code:
 Keep any deployment prefix in `baseUrl`; endpoint paths are appended rather
 than resolved from the origin root.
 
+## Sign-in for a custom app: `./server` and `./next`
+
+A custom app runs on its own origin, so the auth provider's session cookie
+never reaches it. The platform issues the app its own **member session**
+instead: the app sends the browser to the provider with a one-time state, the
+provider returns a one-time code, and the app exchanges the pair on the app's
+control plane for an `mss1_` credential that every installed module accepts as
+`Authorization: Bearer`. Those routes are dispatch's, not a module's, which is
+why the helpers live here beside `platformBaseUrl`.
+
+`./server` is framework-neutral:
+
+```ts
+import { memberSessions } from "@mirrorstack-ai/app-module-client/server";
+
+const sessions = memberSessions({ apiUrl, appSlug });
+const state = sessions.newState();                // keep it in an HttpOnly cookie
+const session = await sessions.exchange(code, state); // { credential, identity, expiresAt }
+await sessions.revoke(session.credential);         // "revoked" | "alreadyInvalid" | "unavailable"
+```
+
+`./next` (optional peer `next`) turns that into ready App Router route
+handlers, so an app's auth routes are one export each:
+
+```ts
+// src/lib/auth.ts
+import { createAuthRoutes } from "@mirrorstack-ai/app-module-client/next";
+export const auth = createAuthRoutes({ apiUrl, appSlug, provider: client.modules.userCore });
+
+// src/app/api/auth/start/route.ts     export const { GET } = auth.start;
+// src/app/api/auth/callback/route.ts  export const { GET } = auth.callback;
+// src/app/api/auth/logout/route.ts    export const { POST } = auth.logout;
+// anywhere server-side                 const credential = await auth.readMemberCredential();
+```
+
+The state is issued and stored in the same request that hands out the start
+URL, taken once before the code is redeemed, and never compared to anything in
+the query; the session cookie is HttpOnly on the app's origin, `Secure` when
+the request is HTTPS, and cleared on logout only after the platform has
+revoked the credential. `handoffParam` defaults to User Core's `ms_handoff`;
+pass the provider's own constant when its client exports one.
+
 ## Transport and platform authentication
 
 `createAppClient` accepts injected `fetch`, `headers`, and `credentials`
