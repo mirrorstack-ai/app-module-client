@@ -120,3 +120,5 @@ Closes #10.
 - A mount-scoped text cache, direct web transport, and platform mount
   contracts under the framework-neutral `./web` entry point.
 - ESM-only TypeScript declarations and zero required runtime dependencies.
+
+[0.4.0]: https://github.com/mirrorstack-ai/app-module-client/releases/tag/v0.4.0
