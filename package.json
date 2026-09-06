@@ -1,6 +1,6 @@
 {
   "name": "@mirrorstack-ai/app-module-client",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Framework-neutral client composition for MirrorStack application modules",
   "type": "module",
   "sideEffects": false,
