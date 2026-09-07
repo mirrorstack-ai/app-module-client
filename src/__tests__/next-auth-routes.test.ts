@@ -48,6 +48,41 @@ describe("start", () => {
     expect(jar.get("ms_handoff_state")?.options).toMatchObject({ secure: true });
   });
 
+  // 🔴 Behind a TLS-terminating proxy — every production deployment — the
+  // request URL carries the INTERNAL hop's scheme, so it reads "http:" while
+  // the browser is on HTTPS. Deriving Secure from it alone shipped the session
+  // cookie WITHOUT Secure over a connection the user believes is encrypted,
+  // and such a cookie is then sent on any later plaintext request to the host.
+  it("marks the cookie Secure behind a TLS-terminating proxy", async () => {
+    await routes().start.GET(
+      new Request(`${ORIGIN}/api/auth/start?provider=google`, {
+        headers: { "x-forwarded-proto": "https" },
+      }),
+    );
+    expect(jar.get("ms_handoff_state")?.options).toMatchObject({ secure: true });
+  });
+
+  it("reads the FIRST hop of a comma-listed forwarded protocol", async () => {
+    await routes().start.GET(
+      new Request(`${ORIGIN}/api/auth/start?provider=google`, {
+        headers: { "x-forwarded-proto": "https, http" },
+      }),
+    );
+    expect(jar.get("ms_handoff_state")?.options).toMatchObject({ secure: true });
+  });
+
+  // The header is consulted only to ADD Secure. A forged value cannot weaken
+  // the cookie, and plain local development — which sets no such header and
+  // cannot store a Secure cookie — keeps working.
+  it("stays insecure on plain http when the proxy says http", async () => {
+    await routes().start.GET(
+      new Request(`${ORIGIN}/api/auth/start?provider=google`, {
+        headers: { "x-forwarded-proto": "http" },
+      }),
+    );
+    expect(jar.get("ms_handoff_state")?.options).toMatchObject({ secure: false });
+  });
+
   it("refuses a missing or malformed provider before issuing anything", async () => {
     const res = await routes().start.GET(new Request(`${ORIGIN}/api/auth/start`));
     expect(res.status).toBe(400);
