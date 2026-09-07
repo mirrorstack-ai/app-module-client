@@ -113,6 +113,35 @@ function failure(request: Request, loginPath: string, reason: string): Response 
  * Creates the three sign-in route handlers and the credential reader for one
  * custom application. Inputs are validated up front, like `platformBaseUrl`.
  */
+/**
+ * Report whether the BROWSER reached this app over HTTPS.
+ *
+ * 🔴 Not `new URL(request.url).protocol` alone. Behind a TLS-terminating proxy
+ * — which is every production deployment of this framework — the request URL
+ * carries the scheme of the INTERNAL hop, so it reads "http:" while the browser
+ * is on HTTPS. Deriving `Secure` from it therefore ships the SESSION COOKIE
+ * without the Secure attribute over a connection the user believes is
+ * encrypted, and a cookie without Secure is sent on any later plaintext request
+ * to the same host.
+ *
+ * `x-forwarded-proto` is what the proxy sets to say what the browser used, and
+ * it is only ever consulted to ADD Secure, never to remove it: a forged header
+ * cannot weaken the cookie, only harden it. A comma list ("https,http") keeps
+ * the first hop, which is the browser's.
+ *
+ * @param request - The incoming route request.
+ * @returns True when the cookie must carry `Secure`.
+ */
+function isSecureRequest(request: Request): boolean {
+  const forwarded = request.headers.get("x-forwarded-proto");
+  if (forwarded && forwarded.split(",")[0]!.trim().toLowerCase() === "https") {
+    return true;
+  }
+  // Plain HTTP local development sets neither, and a `Secure` cookie cannot be
+  // stored there — so the fallback stays the request's own scheme.
+  return new URL(request.url).protocol === "https:";
+}
+
 export function createAuthRoutes(options: AuthRoutesOptions): AuthRoutes {
   if (options === null || typeof options !== "object") {
     throw new TypeError("createAuthRoutes options must be an object");
@@ -138,14 +167,12 @@ export function createAuthRoutes(options: AuthRoutesOptions): AuthRoutes {
   const sessionMaxAge = options.cookies?.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE;
   const stateMaxAge = options.cookies?.stateMaxAgeSeconds ?? DEFAULT_STATE_MAX_AGE;
 
-  // Secure follows the request's own scheme: the cookie is set on the app's
-  // origin, and a `Secure` cookie cannot be set over the plain HTTP that local
-  // development is. Never `SameSite=None`: the return leg from the provider is
-  // a top-level GET navigation, which Lax still carries.
+  // Never `SameSite=None`: the return leg from the provider is a top-level GET
+  // navigation, which Lax still carries.
   const cookieOptions = (request: Request, maxAge: number) => ({
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: new URL(request.url).protocol === "https:",
+    secure: isSecureRequest(request),
     path: "/",
     maxAge,
   });

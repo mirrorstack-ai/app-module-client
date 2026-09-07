@@ -139,6 +139,13 @@ export interface SharedTransportConfig {
   readonly maxResponseBytes: number;
   readonly metadata?: RequestMetadata;
   readonly platformAuth?: PlatformAuth;
+  /**
+   * The signed-in member's credential, sent on PUBLIC scope only.
+   *
+   * Separate from `headers` because a configured header applies to every scope
+   * and platform scope rejects a configured Authorization outright.
+   */
+  readonly memberCredential?: string;
 }
 
 const HTTP_METHOD_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -357,6 +364,15 @@ export function createScopedTransports(
       ? undefined
       : snapshotHeaders(config.headers, "configured headers");
   const headerProvider = typeof config.headers === "function" ? config.headers : undefined;
+  // 🔴 A member credential is PUBLIC-scope authentication and must never reach
+  // platform scope. Sent as a configured header it applies to EVERY scope, and
+  // the platform guard below then throws on any platform-scope call — so an app
+  // holding a signed-in member could not call a platform method at all. It is
+  // carried separately for that reason, not as a convenience.
+  const memberCredential =
+    typeof config.memberCredential === "string" && config.memberCredential !== ""
+      ? config.memberCredential
+      : undefined;
 
   function makeScope(scope: ModuleScope): ScopedTransport {
     const scopePath = scopePaths[scope] ?? scope;
@@ -393,6 +409,12 @@ export function createScopedTransports(
         options.headers === undefined ? undefined : snapshotHeaders(options.headers, "request headers");
       const headers = new Headers();
       const { body, isJson } = serializeBody(optionRecord);
+      // Public scope only, and BEFORE the other sources so an explicit caller
+      // header still wins — a caller sending its own Authorization is making a
+      // deliberate choice.
+      if (memberCredential !== undefined && scope === "public") {
+        headers.set("authorization", `Bearer ${memberCredential}`);
+      }
       for (const source of [staticHeaders, providerHeaders, callerHeaders]) {
         source?.forEach((value, name) => headers.set(name, value));
       }
