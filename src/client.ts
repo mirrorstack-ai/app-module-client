@@ -41,6 +41,18 @@ export interface CreateAppClientOptions<TModules extends ModulePluginMap> {
   readonly fetch?: typeof globalThis.fetch;
   /** Static headers or an async provider invoked for each logical request. */
   readonly headers?: RequestHeaders;
+  /**
+   * The signed-in member's credential, sent as `Authorization: Bearer` on
+   * PUBLIC scope only.
+   *
+   * 🔴 Use this rather than putting the credential in `headers`. A configured
+   * header applies to every scope, and platform scope rejects a configured
+   * Authorization outright — so an app with a signed-in member would be unable
+   * to call any platform method the moment a module client gained one. The
+   * failure is a TypeError at request time, not a compile error, and it is
+   * latent until the first platform-scope method exists.
+   */
+  readonly memberCredential?: string;
   /** Fetch credentials policy. Defaults to `include`. */
   readonly credentials?: RequestCredentials;
   /** Metadata made available to the header provider on every request. */
@@ -125,6 +137,7 @@ export function createAppClient<const TModules extends ModulePluginMap>(
     credentials: options.credentials ?? "include",
     maxResponseBytes: resolveMaxResponseBytes(options.maxResponseBytes),
     ...(options.headers === undefined ? {} : { headers: options.headers }),
+    ...(options.memberCredential === undefined ? {} : { memberCredential: options.memberCredential }),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
     ...(options.platformAuth === undefined ? {} : { platformAuth: options.platformAuth }),
   };
