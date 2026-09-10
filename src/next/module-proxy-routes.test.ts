@@ -13,19 +13,19 @@ const routes = (credential: string | null, fetchImpl: typeof globalThis.fetch) =
 
 describe("createModuleProxyRoutes", () => {
   it("attaches the member credential and composes the platform path", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = routes("mss1_secret", fetchMock as unknown as typeof globalThis.fetch);
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response("{}", { status: 200 }));
+    const r = routes("mss1_secret", fetchMock);
 
     await r.GET(new Request("https://app.example.com/api/mirrorstack/modules/user-core/public/me?x=1"), ctx("user-core", "public", "me"));
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("https://api.example.com/v1/apps/app/demo/user-core/public/me?x=1");
-    expect(new Headers(init.headers).get("authorization")).toBe("Bearer mss1_secret");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer mss1_secret");
   });
 
   it("answers 401 without ever calling upstream when signed out", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = routes(null, fetchMock as unknown as typeof globalThis.fetch);
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response("{}", { status: 200 }));
+    const r = routes(null, fetchMock);
 
     const response = await r.GET(new Request("https://app.example.com/x"), ctx("user-core", "public", "me"));
     expect(response.status).toBe(401);
@@ -35,14 +35,14 @@ describe("createModuleProxyRoutes", () => {
   // 🔴 Both of these are invisible until they bite, which is why they are
   // pinned here rather than left to each app to rediscover.
   it("sets duplex:half so a streamed upload body can leave at all", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = routes("c", fetchMock as unknown as typeof globalThis.fetch);
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response("{}", { status: 200 }));
+    const r = routes("c", fetchMock);
 
     await r.POST(
       new Request("https://app.example.com/x", { method: "POST", body: "hi" }),
       ctx("user-core", "public", "avatar"),
     );
-    expect((fetchMock.mock.calls[0][1] as { duplex?: string }).duplex).toBe("half");
+    expect((fetchMock.mock.calls[0][1] as (RequestInit & { duplex?: string }) | undefined)?.duplex).toBe("half");
   });
 
   it("drops content-length and content-encoding from the response", async () => {
@@ -59,14 +59,14 @@ describe("createModuleProxyRoutes", () => {
   });
 
   it("never replays the app's own cookie upstream", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = routes("c", fetchMock as unknown as typeof globalThis.fetch);
+    const fetchMock = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response("{}", { status: 200 }));
+    const r = routes("c", fetchMock);
 
     await r.GET(
       new Request("https://app.example.com/x", { headers: { cookie: "ms_member_session=abc", "x-keep": "1" } }),
       ctx("a", "b"),
     );
-    const sent = new Headers((fetchMock.mock.calls[0][1] as RequestInit).headers);
+    const sent = new Headers(fetchMock.mock.calls[0][1]?.headers);
     expect(sent.get("cookie")).toBeNull();
     expect(sent.get("x-keep")).toBe("1");
   });
