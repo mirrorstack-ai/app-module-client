@@ -210,6 +210,37 @@ the request is HTTPS, and cleared on logout only after the platform has
 revoked the credential. `handoffParam` defaults to User Core's `ms_handoff`;
 pass the provider's own constant when its client exports one.
 
+### The module proxy
+
+An HttpOnly cookie is unreadable to script by design, so the browser cannot
+call the platform itself — and that is the *only* thing it is missing.
+`createModuleProxyRoutes` is the one server hop that supplies it, so the
+browser keeps using the real module client instead of the app hand-writing an
+endpoint per operation:
+
+```ts
+// src/app/api/mirrorstack/modules/[...path]/route.ts
+import { createModuleProxyRoutes } from "@mirrorstack-ai/app-module-client/next";
+export const runtime = "nodejs";
+export const { GET, POST, PUT, PATCH, DELETE } = createModuleProxyRoutes({
+  apiUrl,
+  appSlug,
+  readMemberCredential: auth.readMemberCredential,
+});
+```
+
+Point the browser client's `baseUrl` at that mount path. Take
+`readMemberCredential` from `createAuthRoutes` rather than re-deriving it, so
+the proxy and sign-in cannot disagree about where the session lives.
+
+It forwards; it does not decide — authorization stays the platform's and the
+modules' answer on every request, and the app's own session cookie is never
+replayed upstream. Two details it handles that are invisible until they bite:
+`duplex: "half"`, which undici requires whenever the body is a stream (so
+without it every upload throws before a byte leaves), and dropping
+`content-encoding` / `content-length` from the response, where a copied length
+describes bytes that no longer exist and the request hangs rather than failing.
+
 ## Transport and platform authentication
 
 `createAppClient` accepts injected `fetch`, `headers`, and `credentials`
