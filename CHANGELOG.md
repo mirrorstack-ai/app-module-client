@@ -5,6 +5,26 @@ All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.0
+
+### Added
+
+- `createModuleProxyRoutes` in `@mirrorstack-ai/app-module-client/next` — the
+  catch-all App Router handlers a browser module client talks through when the
+  member credential lives in an HttpOnly cookie.
+
+  It exists here because every app that keeps its credential in a cookie needs
+  byte-identical code, and two lines of it are invisible until they bite:
+  `duplex: "half"`, required by undici whenever the body is a stream (so every
+  upload throws before a byte leaves without it), and dropping
+  `content-encoding` / `content-length` from the response (a copied length
+  describes bytes that no longer exist, and the request hangs rather than
+  failing). An app writing this by hand gets to discover both.
+
+  It forwards; it does not decide. Authorization stays the platform's and the
+  modules' answer on every request — this attaches a credential the member
+  already holds and grants nothing that credential does not carry.
+
 ## [0.4.0] - 2026-09-06
 
 ### Added
