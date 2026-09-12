@@ -1,5 +1,8 @@
 # @mirrorstack-ai/app-module-client
 
+[![npm](https://img.shields.io/npm/v/@mirrorstack-ai/app-module-client)](https://www.npmjs.com/package/@mirrorstack-ai/app-module-client)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 Framework-neutral, typed composition for calling MirrorStack application
 modules. The package builds dispatch URLs, applies injected transport policy,
 and composes explicitly registered module plugins into one app client. It is
