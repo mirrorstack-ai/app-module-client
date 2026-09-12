@@ -5,6 +5,14 @@ All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.1
+
+### Changed
+
+- Licensed under Apache-2.0 (no license was declared before).
+- Also published to npmjs.com, so the package installs without a GitHub
+  token. GitHub Packages still receives every release.
+
 ## 0.5.0
 
 ### Added
