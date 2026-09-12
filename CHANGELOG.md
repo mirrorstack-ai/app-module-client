@@ -5,6 +5,41 @@ All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.0
+
+### Fixed
+
+- `createModuleProxyRoutes` no longer replays the CDN edge's own headers
+  upstream. On a hosted tenant the request reaches the app carrying
+  Cloudflare's `cf-connecting-ip`; forwarding it into the platform's
+  Cloudflare zone made Cloudflare answer the call itself — `403 text/html`,
+  "Error reference number: 1000" — so **every** browser-side module call on a
+  hosted tenant failed, with a page no module client could parse.
+
+  Measured against the live API, 12 trials per condition: a clean request
+  answered `401` JSON 12/12; adding `cf-connecting-ip` produced the 1000 page
+  12/12. Two findings worth keeping: `cf-connecting-ip` is the trigger
+  (`x-forwarded-for`, `true-client-ip`, `cf-ray` and `cf-visitor` each changed
+  nothing), and `cdn-loop: cloudflare` SUPPRESSES it — so stripping `cdn-loop`
+  while still forwarding `cf-connecting-ip` would have made the failure
+  certain rather than fixing it.
+
+### Changed
+
+- **Breaking for anyone relying on header pass-through.** Request headers are
+  now an ALLOWLIST — `accept`, `accept-language`, `content-type`, the
+  conditional-request headers, `range` and `user-agent` — rather than
+  "everything except a named few". A denylist can only exclude headers someone
+  thought of, which is exactly how this bug happened; the next CDN in front of
+  a tenant (`fastly-client-ip`, `akamai-*`, `x-amzn-*`) would have reproduced
+  it. Unknown no longer travels.
+
+- New `extraRequestHeaders` option on `createModuleProxyRoutes` for an app or
+  module that genuinely needs a custom header from the browser, so the
+  allowlist does not silently drop a feature. A name that describes the network
+  path (`cf-*`, `x-forwarded-*`, `cdn-loop`, `true-client-ip`, `forwarded`,
+  `via`, and other CDN families) is refused at mount rather than in production.
+
 ## 0.5.1
 
 ### Changed
