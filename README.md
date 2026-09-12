@@ -20,18 +20,19 @@ lifecycle helpers remain isolated behind the `./web/react` entry point.
 
 ## Install
 
-The package is published to GitHub Packages. Configure the scope in the
-consuming project and provide authentication through the environment (do not
-commit a token):
+```bash
+pnpm add @mirrorstack-ai/app-module-client
+```
+
+The package is published to [npmjs.com](https://www.npmjs.com/package/@mirrorstack-ai/app-module-client)
+and mirrored to GitHub Packages. A project that already resolves the
+`@mirrorstack-ai` scope from GitHub Packages can keep doing so, providing
+authentication through the environment (do not commit a token):
 
 ```ini
 # .npmrc
 @mirrorstack-ai:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-```
-
-```bash
-pnpm add @mirrorstack-ai/app-module-client
 ```
 
 Node.js 20 or newer is required.
