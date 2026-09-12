@@ -53,14 +53,22 @@ pnpm pack:check
 ```
 
 `pnpm pack:check` runs the build through the package's `prepack` hook and shows
-the exact GitHub Packages tarball contents. Inspect the list whenever exports
-or build configuration changes.
+the exact published tarball contents. Inspect the list whenever exports or
+build configuration changes.
 
 ## Registry credentials
 
-The committed `.npmrc` only selects GitHub Packages for the
-`@mirrorstack-ai` scope. Supply authentication through `NODE_AUTH_TOKEN` or a
-user-level npm configuration; never place a token in this repository.
+The committed `.npmrc` selects GitHub Packages for the `@mirrorstack-ai`
+scope. This package has no `@mirrorstack-ai` dependencies, so
+`pnpm install` needs no token. If you do need GitHub Packages, supply
+authentication through `NODE_AUTH_TOKEN` or a user-level npm configuration;
+never place a token in this repository.
 
-Publishing and version tags are maintainer operations. CI validates a package
-tarball but intentionally does not publish releases.
+Publishing and version tags are maintainer operations. A release publishes to
+GitHub Packages and npmjs.com; CI validates a package tarball but
+intentionally does not publish releases.
+
+## License
+
+By contributing, you agree that your contributions are licensed under the
+[Apache License 2.0](LICENSE).
