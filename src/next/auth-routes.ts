@@ -61,6 +61,35 @@ export interface AuthRoutesOptions {
     /** @defaultValue 10 minutes */
     readonly stateMaxAgeSeconds?: number;
   };
+  /**
+   * Where a member belongs immediately after signing in, decided from the
+   * credential just minted. Optional; without it the callback redirects to
+   * `paths.home` exactly as before.
+   *
+   * 🔴 THIS EXISTS TO REMOVE A WHOLE SSR ROUND TRIP, not to be clever. An app
+   * whose home page immediately redirects a new member somewhere else — an
+   * onboarding form, a waiting-for-review page — makes that member pay for two
+   * full server renders back to back, and through a Worker→Lambda origin the
+   * floor for one is 0.5–0.9s (mirrorstack-core-v2#1393, measured from TW
+   * 2026-09-14). At launch every member is a new member, so every member pays
+   * it. Deciding the destination HERE, where the credential already exists,
+   * replaces the second render with the module read the app was going to make
+   * a moment later anyway.
+   *
+   * The contract is deliberately narrow, because the return value becomes a
+   * redirect target:
+   *   - it must be a same-origin ABSOLUTE PATH (`/onboarding?status=x`);
+   *     anything else is refused and `paths.home` is used instead
+   *   - it is bounded ({@link LANDING_TIMEOUT_MS}); a slow resolver costs the
+   *     member nothing
+   *   - it never fails the sign-in: a throw, a timeout or a refused path all
+   *     fall back to `paths.home`, which is exactly today's behaviour
+   *
+   * A member who has just signed in successfully must never be stranded
+   * because this app could not decide where to put them. The failure is the
+   * app's, not theirs.
+   */
+  readonly landingPath?: (credential: string) => string | Promise<string>;
   /** Fetch implementation for the platform calls. Defaults to `globalThis.fetch`. */
   readonly fetch?: typeof globalThis.fetch;
 }
@@ -92,6 +121,75 @@ function assertPath(value: string, label: string): string {
     throw new TypeError(`${label} must be an absolute path on this app`);
   }
   return value;
+}
+
+/** How long {@link AuthRoutesOptions.landingPath} may take before the callback gives up on it. */
+const LANDING_TIMEOUT_MS = 2_000;
+
+/**
+ * Whether a resolver's answer is safe to redirect to.
+ *
+ * 🔴 EVERY REJECTION HERE IS A MEASURED CROSS-ORIGIN ESCAPE, not a style rule.
+ * The callback resolves the value against the request URL, and `new URL()`
+ * (Node 24, WHATWG) turns each of these into another origin entirely:
+ *
+ *     new URL("//evil.com/x",  "https://app/...")  ->  https://evil.com/x
+ *     new URL("/\\evil.com",   "https://app/...")  ->  https://evil.com/
+ *     new URL("https://evil.com", "https://app/...") -> https://evil.com/
+ *
+ * The backslash is the one that looks harmless: WHATWG treats `\` as `/` in a
+ * special scheme, so `/\evil.com` IS `//evil.com`. Whatever feeds the resolver
+ * — an admission state, a stored "next" value, a module's answer — would
+ * otherwise be an open-redirect surface on the one route that has just minted a
+ * session.
+ *
+ * `%2f%2f` is deliberately NOT rejected: it stays a literal path segment
+ * (measured), so refusing it would only break legitimate encoded paths.
+ */
+function isSameOriginPath(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 2048 &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.includes("\\") &&
+    !/[\u0000-\u001f\u007f]/.test(value)
+  );
+}
+
+/**
+ * The path to send a freshly signed-in member to.
+ *
+ * Falls back to `homePath` on every failure — no resolver, a throw, a timeout,
+ * or an answer that is not a same-origin path — and says why at WARN, because a
+ * silent fallback is indistinguishable from a resolver nobody wired up.
+ */
+async function landingFor(
+  credential: string,
+  homePath: string,
+  resolve: ((credential: string) => string | Promise<string>) | undefined,
+): Promise<string> {
+  if (!resolve) return homePath;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const answer = await Promise.race([
+      Promise.resolve(resolve(credential)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`landingPath did not answer in ${LANDING_TIMEOUT_MS}ms`)), LANDING_TIMEOUT_MS);
+      }),
+    ]);
+    if (isSameOriginPath(answer)) return answer;
+    console.warn(`[mirrorstack] landingPath returned an unusable path; using ${homePath}`, { answer });
+    return homePath;
+  } catch (error) {
+    console.warn(`[mirrorstack] landingPath failed; using ${homePath}`, { error });
+    return homePath;
+  } finally {
+    // Cleared whichever way the race settled: a pending timer keeps the
+    // process (and a serverless invocation) alive for no reason.
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function assertCookieName(value: string, label: string): string {
@@ -223,7 +321,10 @@ export function createAuthRoutes(options: AuthRoutesOptions): AuthRoutes {
           return failure(request, loginPath, "exchange_failed");
         }
         store.set(sessionCookie, credential, cookieOptions(request, sessionMaxAge));
-        return redirect(request, homePath);
+        // The cookie is set BEFORE the landing is resolved, so a resolver that
+        // is slow, throws, or answers nonsense costs the member a redirect
+        // target and never the session they just earned.
+        return redirect(request, await landingFor(credential, homePath, options.landingPath));
       },
     },
     logout: {

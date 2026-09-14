@@ -5,6 +5,34 @@ All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.0
+
+### Added
+
+- `createAuthRoutes` takes an optional `landingPath(credential)`. The callback
+  calls it after the exchange and redirects there, so an app whose home page
+  immediately redirects a new member somewhere else — an onboarding form, a
+  waiting-for-review page — stops making that member pay for two full server
+  renders back to back. Through a Worker→Lambda origin the floor for one render
+  is 0.5–0.9s (mirrorstack-ai/mirrorstack-core-v2#1393, measured from Taiwan
+  2026-09-14), and at launch every member is a new member.
+
+  The contract is deliberately narrow, because the return value becomes a
+  redirect target: it must be a same-origin absolute path, it is bounded at 2s,
+  and a throw, a timeout or a refused path all fall back to `paths.home` with a
+  warning. A member who has just signed in successfully is never stranded
+  because the app could not decide where to put them.
+
+  🔴 A returned path that is not same-origin is refused, and each rejection is a
+  measured escape rather than a style rule: `new URL()` resolves `//evil.com/x`
+  and `/\evil.com` against the app's own origin as `https://evil.com` — the
+  backslash because WHATWG treats it as a slash in a special scheme. Without
+  that check, whatever feeds a resolver becomes an open-redirect surface on the
+  one route that has just minted a session.
+
+  Apps passing no resolver are unaffected: `paths.home` keeps its meaning and
+  its type, and the callback redirects byte-for-byte as before.
+
 ## 0.6.0
 
 ### Fixed
