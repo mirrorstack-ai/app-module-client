@@ -13,6 +13,7 @@ vi.mock("next/headers.js", () => ({
 }));
 
 const { createAuthRoutes } = await import("../next/index.js");
+type AuthRoutesOptions = import("../next/auth-routes.js").AuthRoutesOptions;
 
 const ORIGIN = "http://localhost:3010";
 const startUrl = vi.fn((provider: string, options: { redirect: string; handoffState: string }) =>
@@ -171,5 +172,97 @@ describe("readMemberCredential", () => {
     expect(await auth.readMemberCredential()).toBeNull();
     jar.set("ms_member_session", { value: "mss1_abc" });
     expect(await auth.readMemberCredential()).toBe("mss1_abc");
+  });
+});
+
+// --- landingPath: one SSR round trip removed for a first-time member ---
+//
+// The destination is the whole test. An app whose home page immediately
+// redirects a new member to onboarding makes them pay two full server renders
+// back to back; deciding here, where the credential already exists, replaces
+// the second with a module read. What must never change is that a member who
+// signed in successfully lands SOMEWHERE — every failure falls back to home.
+
+describe("callback landingPath", () => {
+  const exchangeOk = vi.fn(async () =>
+    new Response(
+      JSON.stringify({ v: 1, credential: "mss1_abc", identity: { id: "u-1" }, expiresAt: "2026-09-06T08:00:00Z" }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    ),
+  );
+
+  async function callbackWith(landingPath?: AuthRoutesOptions["landingPath"]): Promise<Response> {
+    jar.set("ms_handoff_state", { value: "0123456789abcdef0123456789abcdef" });
+    const auth = createAuthRoutes({
+      apiUrl: "https://api.example.test",
+      appSlug: "twkpa-edu",
+      provider: { startUrl },
+      fetch: exchangeOk,
+      landingPath,
+    });
+    return auth.callback.GET(new Request(`${ORIGIN}/api/auth/callback?ms_handoff=one-time`));
+  }
+
+  it("sends the member where the resolver says, with the credential it just minted", async () => {
+    const landingPath = vi.fn(async (credential: string) =>
+      credential === "mss1_abc" ? "/onboarding?status=wait-info" : "/wrong",
+    );
+    const res = await callbackWith(landingPath);
+
+    expect(landingPath).toHaveBeenCalledWith("mss1_abc");
+    expect(location(res).pathname + location(res).search).toBe("/onboarding?status=wait-info");
+    // The session is still set: the landing is a destination, not a gate.
+    expect(jar.get("ms_member_session")?.value).toBe("mss1_abc");
+  });
+
+  // 🔴 The old signature must be untouched. An app that passes no resolver has
+  // to redirect byte-for-byte as it did before this option existed.
+  it("redirects to home, unchanged, when no resolver is given", async () => {
+    const res = await callbackWith(undefined);
+    expect(res.status).toBe(302);
+    expect(location(res).pathname).toBe("/");
+    expect(location(res).search).toBe("");
+    expect(jar.get("ms_member_session")?.value).toBe("mss1_abc");
+  });
+
+  // 🔴 EVERY REJECTION HERE IS A MEASURED CROSS-ORIGIN ESCAPE. `new URL()`
+  // resolves a protocol-relative path and a leading-backslash path against
+  // this app's origin as https://evil.com — the backslash because WHATWG
+  // treats it as a slash in a special scheme. Whatever feeds a resolver would
+  // otherwise be an open-redirect surface on the one route that has just
+  // minted a session.
+  it.each([
+    ["protocol-relative", "//evil.com/x"],
+    ["backslash, which WHATWG reads as a slash", "/" + String.fromCharCode(92) + "evil.com"],
+    ["absolute url", "https://evil.com/x"],
+    ["not a path at all", "onboarding"],
+    ["empty", ""],
+    ["a control character", "/ok" + String.fromCharCode(0)],
+  ])("refuses %s and falls back to home", async (_name, answer) => {
+    const res = await callbackWith(() => answer);
+    expect(location(res).host).toBe(new URL(ORIGIN).host);
+    expect(location(res).pathname).toBe("/");
+    expect(jar.get("ms_member_session")?.value).toBe("mss1_abc");
+  });
+
+  it("falls back to home when the resolver throws", async () => {
+    const res = await callbackWith(() => {
+      throw new Error("roles unavailable");
+    });
+    expect(location(res).pathname).toBe("/");
+    expect(jar.get("ms_member_session")?.value).toBe("mss1_abc");
+  });
+
+  it("falls back to home when the resolver never answers, and does not wait forever", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = callbackWith(() => new Promise<string>(() => {}));
+      await vi.advanceTimersByTimeAsync(2_000);
+      const res = await pending;
+      expect(location(res).pathname).toBe("/");
+      expect(jar.get("ms_member_session")?.value).toBe("mss1_abc");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
