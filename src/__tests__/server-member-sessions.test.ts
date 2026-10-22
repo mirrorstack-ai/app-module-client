@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MemberSessionError, memberSessions } from "../server/index.js";
 
-const OPTIONS = { apiUrl: "https://api.example.test", appSlug: "twkpa-edu" };
+const OPTIONS = { apiUrl: "https://api.example.test", appSlug: "example-edu" };
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -9,7 +9,7 @@ function jsonResponse(status: number, body: unknown): Response {
 
 describe("memberSessions", () => {
   it("addresses the app's control plane, not a module", () => {
-    expect(memberSessions(OPTIONS).url).toBe("https://api.example.test/dispatch/apps/twkpa-edu/member-sessions");
+    expect(memberSessions(OPTIONS).url).toBe("https://api.example.test/dispatch/apps/example-edu/member-sessions");
   });
 
   it("validates its inputs up front", () => {
@@ -46,7 +46,7 @@ describe("memberSessions", () => {
       identity: { id: "u-1", displayName: "Ada", email: "ada@example.test", avatarUrl: null, createdAt: "2026-01-01T00:00:00Z", lastSignInAt: "2026-09-06T00:00:00Z" },
     });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://api.example.test/dispatch/apps/twkpa-edu/member-sessions");
+    expect(url).toBe("https://api.example.test/dispatch/apps/example-edu/member-sessions");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({ v: 1, code: "one-time", state: "0123456789abcdef" });
     expect(new Headers(init.headers).get("content-type")).toBe("application/json");
@@ -70,7 +70,7 @@ describe("memberSessions", () => {
       const fetchMock = vi.fn(async () => new Response(null, { status }));
       await expect(memberSessions({ ...OPTIONS, fetch: fetchMock }).revoke("mss1_abc")).resolves.toBe(outcome);
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-      expect(url).toBe("https://api.example.test/dispatch/apps/twkpa-edu/member-sessions/current");
+      expect(url).toBe("https://api.example.test/dispatch/apps/example-edu/member-sessions/current");
       expect(init.method).toBe("DELETE");
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer mss1_abc");
     }

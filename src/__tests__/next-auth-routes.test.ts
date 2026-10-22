@@ -17,11 +17,11 @@ type AuthRoutesOptions = import("../next/auth-routes.js").AuthRoutesOptions;
 
 const ORIGIN = "http://localhost:3010";
 const startUrl = vi.fn((provider: string, options: { redirect: string; handoffState: string }) =>
-  `https://api.example.test/v1/apps/app/twkpa-edu/public/user-core/start?provider=${provider}&redirect=${encodeURIComponent(options.redirect)}&handoff=true&handoff_state=${options.handoffState}`,
+  `https://api.example.test/v1/apps/app/example-edu/public/user-core/start?provider=${provider}&redirect=${encodeURIComponent(options.redirect)}&handoff=true&handoff_state=${options.handoffState}`,
 );
 
 function routes(fetchImpl?: typeof fetch) {
-  return createAuthRoutes({ apiUrl: "https://api.example.test", appSlug: "twkpa-edu", provider: { startUrl }, fetch: fetchImpl });
+  return createAuthRoutes({ apiUrl: "https://api.example.test", appSlug: "example-edu", provider: { startUrl }, fetch: fetchImpl });
 }
 
 function location(res: Response): URL {
@@ -45,7 +45,7 @@ describe("start", () => {
   });
 
   it("marks the cookie Secure when the app is served over https", async () => {
-    await routes().start.GET(new Request("https://twkpa-edu.mirrorstack.app/api/auth/start?provider=google"));
+    await routes().start.GET(new Request("https://example-edu.mirrorstack.app/api/auth/start?provider=google"));
     expect(jar.get("ms_handoff_state")?.options).toMatchObject({ secure: true });
   });
 
@@ -143,7 +143,7 @@ describe("logout", () => {
     const revoked = vi.fn(async () => new Response(null, { status: 204 }));
     const res = await routes(revoked).logout.POST(new Request(`${ORIGIN}/api/auth/logout`, { method: "POST" }));
     const [url, init] = revoked.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://api.example.test/dispatch/apps/twkpa-edu/member-sessions/current");
+    expect(url).toBe("https://api.example.test/dispatch/apps/example-edu/member-sessions/current");
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer mss1_abc");
     expect(jar.has("ms_member_session")).toBe(false);
     expect(res.status).toBe(303);
@@ -195,7 +195,7 @@ describe("callback landingPath", () => {
     jar.set("ms_handoff_state", { value: "0123456789abcdef0123456789abcdef" });
     const auth = createAuthRoutes({
       apiUrl: "https://api.example.test",
-      appSlug: "twkpa-edu",
+      appSlug: "example-edu",
       provider: { startUrl },
       fetch: exchangeOk,
       landingPath,

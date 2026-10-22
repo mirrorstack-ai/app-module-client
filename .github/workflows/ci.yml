@@ -68,8 +68,8 @@ jobs:
           // Cross-repo contract: the platform serves a custom app's modules at
           // https://api.<org-domain>/v1/apps/app/<app-slug>/<scope>/<module-slug>/<path>
           assert.equal(
-            platformBaseUrl({ apiUrl: "https://api.example.org/", appSlug: "twkpa-edu" }),
-            "https://api.example.org/v1/apps/app/twkpa-edu",
+            platformBaseUrl({ apiUrl: "https://api.example.org/", appSlug: "example-edu" }),
+            "https://api.example.org/v1/apps/app/example-edu",
           );
 
           const calls = [];
@@ -80,7 +80,7 @@ jobs:
             },
           });
           const client = createAppClient({
-            baseUrl: "https://api.example.org/v1/apps/app/twkpa-edu",
+            baseUrl: "https://api.example.org/v1/apps/app/example-edu",
             modules: { user: userCore },
             fetch: async (input, init) => {
               calls.push([input, init]);
@@ -92,7 +92,7 @@ jobs:
           assert.equal(calls.length, 1);
           assert.equal(
             calls[0][0],
-            "https://api.example.org/v1/apps/app/twkpa-edu/public/user-core/me",
+            "https://api.example.org/v1/apps/app/example-edu/public/user-core/me",
           );
           assert.equal(calls[0][1].method, "GET");
           assert.equal(calls[0][1].credentials, "include");
