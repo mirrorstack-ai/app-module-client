@@ -76,7 +76,7 @@ describe("createModuleProxyRoutes", () => {
     ["cdn-loop", "cloudflare; loops=1"],
     ["x-forwarded-for", "1.2.3.4, 35.72.244.132"],
     ["x-forwarded-proto", "https"],
-    ["x-forwarded-host", "twkpa-edu.mirrorstack.app"],
+    ["x-forwarded-host", "example-edu.mirrorstack.app"],
     ["x-real-ip", "1.2.3.4"],
     ["true-client-ip", "1.2.3.4"],
     ["forwarded", "for=1.2.3.4;proto=https"],
